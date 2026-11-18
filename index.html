@@ -1,0 +1,2859 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>ブロックブラスト！</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap" rel="stylesheet">
+    <style>
+        /* カスタムスタイルとアニメーション */
+        body {
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            background: radial-gradient(circle at center, #1e293b 0%, #0f172a 100%);
+            color: #f8fafc;
+            touch-action: none; /* スクロールやズームを防止 */
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+        }
+
+        /* ジュエル風ブロックの立体表現 */
+        .block-jewel {
+            border-radius: 6px;
+            box-shadow: 
+                inset 0 3px 4px rgba(255, 255, 255, 0.45),
+                inset 0 -3px 4px rgba(0, 0, 0, 0.35),
+                0 2px 4px rgba(0, 0, 0, 0.4);
+            position: relative;
+            transition: transform 0.1s ease;
+        }
+
+        .block-jewel::after {
+            content: '';
+            position: absolute;
+            top: 15%;
+            left: 15%;
+            right: 15%;
+            bottom: 15%;
+            border-radius: 3px;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            pointer-events: none;
+        }
+
+        /* ボードのセル */
+        .board-cell {
+            background-color: rgba(15, 23, 42, 0.65);
+            border-radius: 6px;
+            box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+            transition: background-color 0.15s ease, transform 0.15s ease, box-shadow 0.15s ease;
+        }
+
+        /* ゴースト表示（配置プレビュー） */
+        .ghost-cell {
+            opacity: 0.45;
+            transform: scale(0.95);
+        }
+
+        /* ヒントありモード用の最適配置ガイド表示 */
+        @keyframes hintPulse {
+            0%, 100% {
+                box-shadow: inset 0 0 10px rgba(56, 189, 248, 0.85), 0 0 8px rgba(56, 189, 248, 0.5);
+                background-color: rgba(56, 189, 248, 0.22);
+            }
+            50% {
+                box-shadow: inset 0 0 18px rgba(125, 211, 252, 1), 0 0 14px rgba(56, 189, 248, 0.85);
+                background-color: rgba(56, 189, 248, 0.38);
+            }
+        }
+        .hint-guide-cell {
+            border: 2px dashed rgba(125, 211, 252, 0.95) !important;
+            animation: hintPulse 1.3s infinite ease-in-out;
+        }
+
+        /* 消去予定ラインのハイライト */
+        .highlight-clear {
+            filter: brightness(1.4) drop-shadow(0 0 8px rgba(255, 255, 255, 0.8));
+            transform: scale(1.04);
+            z-index: 10;
+        }
+
+        /* ライン消去フラッシュアニメーション */
+        @keyframes clearFlash {
+            0% { transform: scale(1); filter: brightness(2.5); opacity: 1; }
+            50% { transform: scale(1.15); filter: brightness(3); opacity: 0.8; }
+            100% { transform: scale(0); filter: brightness(1); opacity: 0; }
+        }
+        .anim-clear {
+            animation: clearFlash 0.35s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+        }
+
+        /* 画面シェイクアニメーション（そうそうモード・ボム爆発用） */
+        @keyframes boardShake {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            20% { transform: translate(-5px, 3px) rotate(-0.8deg); }
+            40% { transform: translate(5px, -3px) rotate(0.8deg); }
+            60% { transform: translate(-4px, -2px) rotate(-0.5deg); }
+            80% { transform: translate(4px, 2px) rotate(0.5deg); }
+        }
+        .anim-shake {
+            animation: boardShake 0.35s ease-in-out;
+        }
+
+        /* ボム範囲のオレンジハイライト */
+        .highlight-bomb {
+            box-shadow: inset 0 0 12px rgba(249, 115, 22, 0.95), 0 0 8px rgba(249, 115, 22, 0.7) !important;
+            border: 1.5px solid #fb923c;
+        }
+
+        /* 配置時のバウンスアニメーション */
+        @keyframes placePop {
+            0% { transform: scale(0.7); }
+            60% { transform: scale(1.08); }
+            100% { transform: scale(1); }
+        }
+        .anim-place {
+            animation: placePop 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+
+        /* スコア・コンボポップアップアニメーション */
+        @keyframes floatUp {
+            0% { transform: translate(-50%, 0) scale(0.5); opacity: 0; }
+            20% { transform: translate(-50%, -15px) scale(1.15); opacity: 1; }
+            80% { transform: translate(-50%, -45px) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -65px) scale(0.9); opacity: 0; }
+        }
+        .popup-text {
+            position: absolute;
+            pointer-events: none;
+            z-index: 50;
+            font-weight: 900;
+            text-shadow: 0 3px 6px rgba(0,0,0,0.8), 0 0 12px rgba(255,255,255,0.4);
+            animation: floatUp 1.1s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            white-space: nowrap;
+        }
+
+        /* ボタンの立体感 */
+        .btn-pop {
+            box-shadow: 0 4px 0 #1d4ed8, 0 6px 12px rgba(0, 0, 0, 0.4);
+            transition: all 0.1s ease;
+        }
+        .btn-pop:active {
+            transform: translateY(3px);
+            box-shadow: 0 1px 0 #1d4ed8, 0 2px 4px rgba(0, 0, 0, 0.4);
+        }
+
+        /* ドラッグ中のフローティングピース */
+        #drag-layer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            pointer-events: none;
+            z-index: 100;
+            will-change: transform;
+        }
+
+        /* モード選択カードのホバー効果 */
+        .mode-card {
+            transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), border-color 0.15s ease, box-shadow 0.15s ease;
+        }
+        .mode-card:active {
+            transform: scale(0.97);
+        }
+
+        /* アチーブメント解除トースト通知 */
+        @keyframes toastSlideIn {
+            0% { transform: translate(-50%, -120%) scale(0.85); opacity: 0; }
+            15% { transform: translate(-50%, 0) scale(1.03); opacity: 1; }
+            85% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+            100% { transform: translate(-50%, -120%) scale(0.9); opacity: 0; }
+        }
+        .achievement-toast {
+            animation: toastSlideIn 3.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        /* タイムアタック残り時間ピンチ点滅 */
+        @keyframes timerPulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.12); color: #fda4af; }
+        }
+        .timer-danger {
+            animation: timerPulse 0.6s infinite ease-in-out;
+        }
+    </style>
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        window.CloudSDK = {
+            initializeApp, getAuth, signInAnonymously, signInWithCustomToken,
+            getFirestore, doc, setDoc, getDoc, updateDoc, onSnapshot, collection
+        };
+    </script>
+</head>
+<body id="app-body" class="h-screen w-screen flex flex-col items-center justify-between py-2.5 px-3 sm:py-4 sm:px-4 transition-colors duration-500">
+
+    <!-- アチーブメント解除トースト通知 -->
+    <div id="achievement-toast-container" class="fixed top-3 left-1/2 -translate-x-1/2 z-[120] pointer-events-none w-full max-w-xs px-2"></div>
+
+    <!-- ヘッダー：ハイスコア・現在のスコア・アチーブメント・言語・サウンド切替 -->
+    <header class="w-full max-w-md flex items-center justify-between bg-slate-800/85 backdrop-blur-md border border-slate-700/80 rounded-2xl px-3 py-2 shadow-xl">
+        <!-- ハイスコア -->
+        <div class="flex items-center space-x-1.5 sm:space-x-2">
+            <div class="bg-amber-500/20 p-1.5 rounded-xl border border-amber-400/30">
+                <svg class="w-4 h-4 text-amber-400" fill="currentColor" viewBox="0 0 20 20">
+                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"/>
+                </svg>
+            </div>
+            <div>
+                <div class="text-[9px] sm:text-[10px] font-bold text-slate-400 tracking-wider">BEST</div>
+                <div id="high-score" class="text-sm sm:text-lg font-extrabold text-amber-400 leading-none">0</div>
+            </div>
+        </div>
+
+        <!-- 現在のスコア＆モードバッジ＆タイムアタックタイマー -->
+        <div class="flex flex-col items-center">
+            <div class="flex items-center space-x-1.5 mb-0.5">
+                <button id="header-mode-btn" class="px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-extrabold tracking-wider flex items-center space-x-1 border transition active:scale-95 bg-blue-500/20 border-blue-400/40 text-blue-300" title="Change Mode">
+                    <span id="header-mode-label">NORMAL</span>
+                    <svg class="w-3 h-3 opacity-80" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <!-- タイムアタック残り時間バッジ -->
+                <div id="timer-badge" class="hidden px-2 py-0.5 rounded-full bg-rose-500/25 border border-rose-400/50 text-rose-200 text-[10px] sm:text-xs font-black tracking-wider flex items-center space-x-1">
+                    <span>⏱️</span>
+                    <span id="timer-display">60.0s</span>
+                </div>
+            </div>
+            <div id="current-score" class="text-2xl sm:text-3xl font-black text-white tracking-tight drop-shadow-[0_2px_8px_rgba(56,189,248,0.5)] leading-none">0</div>
+        </div>
+
+        <!-- ランキング・アチーブメント・言語切替・サウンドボタン -->
+        <div class="flex items-center space-x-1 sm:space-x-1.5">
+            <button id="leaderboard-btn" class="p-1.5 sm:p-2 bg-indigo-500/20 hover:bg-indigo-500/30 rounded-xl border border-indigo-400/40 text-indigo-300 transition active:scale-95" aria-label="Leaderboard" title="世界ランキング">
+                <span class="text-sm sm:text-base leading-none">🌐</span>
+            </button>
+            <button id="achievement-btn" class="relative p-1.5 sm:p-2 bg-amber-500/20 hover:bg-amber-500/30 rounded-xl border border-amber-400/40 text-amber-300 transition active:scale-95" aria-label="Achievements" title="実績・称号">
+                <span class="text-sm sm:text-base leading-none">🏆</span>
+                <span id="achievement-count-badge" class="absolute -top-1.5 -right-1.5 px-1 min-w-[16px] h-4 rounded-full bg-amber-400 text-slate-950 text-[9px] font-black flex items-center justify-center">0</span>
+            </button>
+            <button id="lang-btn" class="px-2 py-1.5 sm:py-2 bg-slate-700/80 hover:bg-slate-600 rounded-xl border border-slate-600 text-[11px] sm:text-xs font-black text-amber-300 transition active:scale-95" aria-label="Switch Language" title="日本語 / English 切替">
+                EN
+            </button>
+            <button id="mute-btn" class="p-1.5 sm:p-2 bg-slate-700/80 hover:bg-slate-600 rounded-xl border border-slate-600 transition active:scale-95" aria-label="Toggle Sound">
+                <!-- サウンドONアイコン -->
+                <svg id="icon-sound-on" class="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                </svg>
+                <!-- サウンドOFFアイコン -->
+                <svg id="icon-sound-off" class="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 hidden" fill="none" stroke="currentColor" stroke-width="2.2" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2"/>
+                </svg>
+            </button>
+        </div>
+    </header>
+
+    <!-- メインゲームボードエリア -->
+    <main class="relative flex-1 w-full max-w-md flex flex-col items-center justify-center my-1">
+        <!-- オンライン対戦リアルタイムステータスバー（オンラインモード時のみ表示） -->
+        <div id="online-vs-bar" class="hidden w-full mb-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-indigo-950/90 via-purple-950/90 to-rose-950/90 border border-indigo-400/50 flex items-center justify-between text-xs shadow-lg">
+            <div class="flex items-center space-x-1.5 min-w-0">
+                <span class="px-1.5 py-0.5 rounded bg-indigo-500/30 border border-indigo-400/50 text-[10px] font-black text-indigo-200 shrink-0">ROOM: <span id="vs-room-code">----</span></span>
+                <span id="vs-my-name" class="font-bold text-cyan-300 truncate max-w-[70px]">YOU</span>
+            </div>
+            <div class="font-black text-amber-300 px-1.5">VS</div>
+            <div class="flex items-center space-x-1.5 min-w-0 justify-end">
+                <span id="vs-rival-name" class="font-bold text-rose-300 truncate max-w-[85px]">待機中...</span>
+                <span id="vs-rival-score" class="px-2 py-0.5 rounded-lg bg-rose-500/30 border border-rose-400/50 font-black text-white">0</span>
+            </div>
+        </div>
+
+        <!-- コンボ＆モードヒントバー -->
+        <div class="w-full flex items-center justify-between px-1 mb-1 min-h-[20px]">
+            <div id="mode-hint-text" class="text-[11px] font-bold text-slate-400 truncate">
+                ブロックを並べてラインを消そう！
+            </div>
+            <div id="combo-badge" class="px-2.5 py-0.5 rounded-full bg-fuchsia-500/20 border border-fuchsia-400/40 text-fuchsia-300 text-xs font-extrabold tracking-wider opacity-0 transition-opacity duration-200 shrink-0">
+                COMBO x1
+            </div>
+        </div>
+
+        <!-- 8x8 ボードコンテナ -->
+        <div id="board-wrapper" class="relative w-full aspect-square max-h-[47vh] sm:max-h-[50vh] bg-slate-800/90 p-2 sm:p-3 rounded-2xl border-2 border-slate-700/90 shadow-[0_10px_30px_rgba(0,0,0,0.6)] flex items-center justify-center transition-colors duration-300">
+            <!-- 8x8 グリッド -->
+            <div id="game-board" class="w-full h-full grid grid-cols-8 grid-rows-8 gap-1 sm:gap-1.5">
+                <!-- JSで64個のセルを生成 -->
+            </div>
+
+            <!-- パーティクルエフェクト用キャンバス -->
+            <canvas id="particle-canvas" class="absolute inset-0 w-full h-full pointer-events-none z-30 rounded-2xl"></canvas>
+
+            <!-- ポップアップテキスト表示用レイヤー -->
+            <div id="popup-layer" class="absolute inset-0 pointer-events-none z-40 overflow-visible"></div>
+        </div>
+    </main>
+
+    <!-- 下部：ホールド枠（左）＋ ピース選択トレイ（右3スロット） -->
+    <footer class="w-full max-w-md bg-slate-800/75 backdrop-blur-md border border-slate-700/70 rounded-2xl p-2 sm:p-3 shadow-xl">
+        <div class="grid grid-cols-4 gap-1.5 sm:gap-2 h-22 sm:h-26 items-center justify-items-center">
+            <!-- ホールド（KEEP）スロット -->
+            <div class="relative w-full h-20 sm:h-24 flex flex-col items-center justify-center rounded-xl bg-indigo-950/60 border-2 border-dashed border-indigo-400/50 transition" id="hold-box">
+                <div id="hold-label" class="absolute top-1 left-1.5 text-[9px] font-black tracking-wider text-indigo-300 pointer-events-none">HOLD</div>
+                <div id="hold-slot" class="w-full h-full flex items-center justify-center cursor-grab active:cursor-grabbing pt-2">
+                    <span id="hold-empty-hint" class="text-[9px] sm:text-[10px] font-bold text-indigo-300/60 text-center px-1 leading-tight pointer-events-none">ここへ<br>預ける</span>
+                </div>
+            </div>
+
+            <!-- 3つのピーススロット -->
+            <div id="slot-0" class="piece-slot relative w-full h-20 sm:h-24 flex items-center justify-center rounded-xl bg-slate-900/40 border border-slate-700/40 cursor-grab active:cursor-grabbing"></div>
+            <div id="slot-1" class="piece-slot relative w-full h-20 sm:h-24 flex items-center justify-center rounded-xl bg-slate-900/40 border border-slate-700/40 cursor-grab active:cursor-grabbing"></div>
+            <div id="slot-2" class="piece-slot relative w-full h-20 sm:h-24 flex items-center justify-center rounded-xl bg-slate-900/40 border border-slate-700/40 cursor-grab active:cursor-grabbing"></div>
+        </div>
+    </footer>
+
+    <!-- ドラッグ中のピースを描画するフローティングレイヤー -->
+    <div id="drag-layer" class="hidden"></div>
+
+    <!-- モード選択（タイトル）モーダル -->
+    <div id="mode-select-modal" class="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+        <div class="bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-slate-700 rounded-3xl p-4 sm:p-5 w-full max-w-md shadow-2xl my-auto">
+            <div class="flex items-start justify-between mb-2.5">
+                <button id="modal-achievement-btn" class="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500/30 rounded-xl border border-amber-400/40 text-xs font-black text-amber-300 transition active:scale-95 shrink-0 flex items-center space-x-1">
+                    <span>🏆</span>
+                    <span id="modal-ach-progress">0/8</span>
+                </button>
+                <div class="text-center">
+                    <div id="modal-subtitle" class="inline-block px-3 py-0.5 rounded-full bg-cyan-500/20 border border-cyan-400/40 text-cyan-300 text-[10px] font-extrabold tracking-widest mb-1">
+                        ブロックパズル
+                    </div>
+                    <h1 id="modal-title" class="text-xl sm:text-2xl font-black text-white tracking-tight">モードを選択</h1>
+                    <p id="modal-desc" class="text-[11px] text-slate-400 mt-0.5">好きなプレイスタイルを選んでスタート！</p>
+                </div>
+                <button id="modal-lang-btn" class="px-2.5 py-1.5 bg-slate-700/90 hover:bg-slate-600 rounded-xl border border-slate-600 text-xs font-black text-amber-300 transition active:scale-95 shrink-0">
+                    EN
+                </button>
+            </div>
+
+            <div class="space-y-1.5 sm:space-y-2 max-h-[68vh] overflow-y-auto pr-0.5">
+                <!-- 0. ヒントありモード -->
+                <button data-select-mode="hint" class="mode-card w-full text-left p-2.5 rounded-2xl bg-sky-950/55 hover:bg-sky-900/65 border border-sky-400/50 flex items-center justify-between group">
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-9 h-9 rounded-xl bg-sky-500/25 border border-sky-400/50 flex items-center justify-center text-sky-300 font-black text-lg shrink-0">
+                            💡
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-1.5">
+                                <span id="mode-title-hint" class="font-black text-sm text-sky-300">ヒントありモード</span>
+                                <span id="mode-badge-hint" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-sky-500/25 text-sky-200">おすすめ</span>
+                            </div>
+                            <p id="mode-desc-hint" class="text-[10px] text-slate-300 leading-snug mt-0.5">10秒悩むとおすすめの置き場所が光る＋タップで90°回転！</p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 ml-2">
+                        <div class="text-[9px] font-bold text-slate-400">BEST</div>
+                        <div id="best-hint" class="text-xs font-extrabold text-amber-400">0</div>
+                    </div>
+                </button>
+
+                <!-- 1. イージーモード -->
+                <button data-select-mode="easy" class="mode-card w-full text-left p-2.5 rounded-2xl bg-emerald-950/50 hover:bg-emerald-900/60 border border-emerald-500/40 flex items-center justify-between group">
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-9 h-9 rounded-xl bg-emerald-500/20 border border-emerald-400/40 flex items-center justify-center text-emerald-300 font-black text-lg shrink-0">
+                            ↻
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-1.5">
+                                <span id="mode-title-easy" class="font-black text-sm text-emerald-300">イージーモード</span>
+                                <span id="mode-badge-easy" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-200">回転あり</span>
+                            </div>
+                            <p id="mode-desc-easy" class="text-[10px] text-slate-300 leading-snug mt-0.5">手持ちブロックをタップすると90°回転して置ける！</p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 ml-2">
+                        <div class="text-[9px] font-bold text-slate-400">BEST</div>
+                        <div id="best-easy" class="text-xs font-extrabold text-amber-400">0</div>
+                    </div>
+                </button>
+
+                <!-- 2. ノーマルモード -->
+                <button data-select-mode="normal" class="mode-card w-full text-left p-2.5 rounded-2xl bg-blue-950/50 hover:bg-blue-900/60 border border-blue-500/40 flex items-center justify-between group">
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/40 flex items-center justify-center text-blue-300 font-black text-lg shrink-0">
+                            ■
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-1.5">
+                                <span id="mode-title-normal" class="font-black text-sm text-blue-300">ノーマルモード</span>
+                                <span id="mode-badge-normal" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-200">定番</span>
+                            </div>
+                            <p id="mode-desc-normal" class="text-[10px] text-slate-300 leading-snug mt-0.5">標準ルールの王道パズル。ハイスコアを目指そう！</p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 ml-2">
+                        <div class="text-[9px] font-bold text-slate-400">BEST</div>
+                        <div id="best-normal" class="text-xs font-extrabold text-amber-400">0</div>
+                    </div>
+                </button>
+
+                <!-- 3. タイムアタックモード（制限時間カスタム可能） -->
+                <div class="p-2.5 rounded-2xl bg-cyan-950/55 border border-cyan-400/50">
+                    <button data-select-mode="timeattack" class="mode-card w-full text-left flex items-center justify-between group">
+                        <div class="flex items-center space-x-2.5">
+                            <div class="w-9 h-9 rounded-xl bg-cyan-500/25 border border-cyan-400/50 flex items-center justify-center text-cyan-300 font-black text-lg shrink-0">
+                                ⏱️
+                            </div>
+                            <div>
+                                <div class="flex items-center space-x-1.5">
+                                    <span id="mode-title-timeattack" class="font-black text-sm text-cyan-300">タイムアタック</span>
+                                    <span id="mode-badge-timeattack" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-cyan-500/25 text-cyan-200">時間制限</span>
+                                </div>
+                                <p id="mode-desc-timeattack" class="text-[10px] text-slate-300 leading-snug mt-0.5">制限時間内にハイスコア勝負！ライン消去で時間延長！</p>
+                            </div>
+                        </div>
+                        <div class="text-right shrink-0 ml-2">
+                            <div class="text-[9px] font-bold text-slate-400">BEST</div>
+                            <div id="best-timeattack" class="text-xs font-extrabold text-amber-400">0</div>
+                        </div>
+                    </button>
+                    <!-- 制限時間カスタム設定バー -->
+                    <div class="mt-2 pt-2 border-t border-cyan-500/25 flex items-center justify-between gap-1">
+                        <span id="time-limit-label" class="text-[10px] font-extrabold text-cyan-200 shrink-0">制限時間:</span>
+                        <div class="flex items-center space-x-1">
+                            <button type="button" data-time-preset="30" class="time-preset-btn px-2 py-0.5 rounded-lg text-[10px] font-black bg-slate-800/80 text-slate-300 border border-slate-600 transition">30s</button>
+                            <button type="button" data-time-preset="60" class="time-preset-btn px-2 py-0.5 rounded-lg text-[10px] font-black bg-cyan-500 text-slate-950 border border-cyan-300 transition">60s</button>
+                            <button type="button" data-time-preset="120" class="time-preset-btn px-2 py-0.5 rounded-lg text-[10px] font-black bg-slate-800/80 text-slate-300 border border-slate-600 transition">120s</button>
+                            <div class="flex items-center bg-slate-900/90 border border-cyan-400/50 rounded-lg px-1.5 py-0.5">
+                                <input id="custom-time-input" type="number" min="10" max="600" value="60" class="w-10 bg-transparent text-center text-[11px] font-black text-cyan-300 focus:outline-none" aria-label="Custom seconds">
+                                <span class="text-[9px] font-bold text-slate-400">s</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 4. ハードモード -->
+                <button data-select-mode="hard" class="mode-card w-full text-left p-2.5 rounded-2xl bg-rose-950/50 hover:bg-rose-900/60 border border-rose-500/40 flex items-center justify-between group">
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-9 h-9 rounded-xl bg-rose-500/20 border border-rose-400/40 flex items-center justify-center text-rose-300 font-black text-lg shrink-0">
+                            🔥
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-1.5">
+                                <span id="mode-title-hard" class="font-black text-sm text-rose-300">ハードモード</span>
+                                <span id="mode-badge-hard" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-200">上級者向け</span>
+                            </div>
+                            <p id="mode-desc-hard" class="text-[10px] text-slate-300 leading-snug mt-0.5">初期ブロック配置＋S/Z/L字が多めに出現（スコア1.5倍）！</p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 ml-2">
+                        <div class="text-[9px] font-bold text-slate-400">BEST</div>
+                        <div id="best-hard" class="text-xs font-extrabold text-amber-400">0</div>
+                    </div>
+                </button>
+
+                <!-- 5. そうそう（爽快）モード -->
+                <button data-select-mode="sousou" class="mode-card w-full text-left p-2.5 rounded-2xl bg-gradient-to-r from-amber-950/60 to-fuchsia-950/60 hover:from-amber-900/70 hover:to-fuchsia-900/70 border border-amber-400/50 flex items-center justify-between group shadow-[0_0_20px_rgba(245,158,11,0.15)]">
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-9 h-9 rounded-xl bg-amber-500/25 border border-amber-400/50 flex items-center justify-center text-amber-300 font-black text-lg shrink-0">
+                            💣
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-1.5">
+                                <span id="mode-title-sousou" class="font-black text-sm text-transparent bg-clip-text bg-gradient-to-r from-amber-300 to-pink-300">そうそうモード</span>
+                                <span id="mode-badge-sousou" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-amber-500/25 text-amber-200">スコア2倍</span>
+                            </div>
+                            <p id="mode-desc-sousou" class="text-[10px] text-slate-200 leading-snug mt-0.5">開幕大連鎖＆3×3爆破ボム出現！超爽快フィーバー！</p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 ml-2">
+                        <div class="text-[9px] font-bold text-slate-400">BEST</div>
+                        <div id="best-sousou" class="text-xs font-extrabold text-amber-400">0</div>
+                    </div>
+                </button>
+
+                <!-- 6. オンライン対戦モード（NEW!） -->
+                <button id="open-online-lobby-btn" class="mode-card w-full text-left p-2.5 rounded-2xl bg-gradient-to-r from-indigo-950/80 to-violet-950/80 hover:from-indigo-900/90 hover:to-violet-900/90 border border-indigo-400/60 flex items-center justify-between group shadow-[0_0_20px_rgba(99,102,241,0.25)]">
+                    <div class="flex items-center space-x-2.5">
+                        <div class="w-9 h-9 rounded-xl bg-indigo-500/30 border border-indigo-400/60 flex items-center justify-center text-indigo-200 font-black text-lg shrink-0">
+                            🌐
+                        </div>
+                        <div>
+                            <div class="flex items-center space-x-1.5">
+                                <span id="mode-title-online" class="font-black text-sm text-transparent bg-clip-text bg-gradient-to-r from-indigo-200 to-cyan-200">オンライン対戦</span>
+                                <span id="mode-badge-online" class="text-[9px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-500/35 text-indigo-200">VS 2人対戦</span>
+                            </div>
+                            <p id="mode-desc-online" class="text-[10px] text-slate-200 leading-snug mt-0.5">合言葉（ルームID）で友達とリアルタイム60秒スコア対決！</p>
+                        </div>
+                    </div>
+                    <div class="text-right shrink-0 ml-2">
+                        <div class="text-[9px] font-bold text-slate-400">BEST</div>
+                        <div id="best-online" class="text-xs font-extrabold text-amber-400">0</div>
+                    </div>
+                </button>
+            </div>
+
+            <!-- プレイ中の場合のみ表示する「閉じる（ゲームに戻る）」ボタン -->
+            <button id="close-mode-modal-btn" class="hidden mt-3 w-full py-2.5 rounded-xl bg-slate-700/80 hover:bg-slate-600 text-slate-200 text-xs font-extrabold transition">
+                現在のゲームに戻る
+            </button>
+        </div>
+    </div>
+
+    <!-- オンライン対戦ロビーモーダル -->
+    <div id="online-lobby-modal" class="fixed inset-0 z-[55] bg-slate-950/90 backdrop-blur-md hidden flex items-center justify-center p-4">
+        <div class="bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-indigo-400/50 rounded-3xl p-5 w-full max-w-md shadow-2xl">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center space-x-2">
+                    <span class="text-2xl">🌐</span>
+                    <div>
+                        <h2 id="online-modal-title" class="text-lg sm:text-xl font-black text-white leading-tight">オンライン対戦ロビー</h2>
+                        <p id="online-modal-sub" class="text-[11px] text-indigo-300 font-bold">同じルーム番号を入力して友達と対戦！</p>
+                    </div>
+                </div>
+                <button id="close-online-lobby-btn" class="p-2 rounded-xl bg-slate-700/80 hover:bg-slate-600 text-slate-200 text-xs font-black transition">✕</button>
+            </div>
+
+            <!-- プレイヤー名入力 -->
+            <div class="mb-3 bg-slate-900/70 p-3 rounded-2xl border border-slate-700">
+                <label id="online-name-label" class="block text-[10px] font-extrabold text-slate-400 mb-1">プレイヤー名（ランキングにも表示）</label>
+                <input id="online-player-name" type="text" maxlength="12" placeholder="Player" class="w-full px-3 py-2 rounded-xl bg-slate-800 border border-slate-600 text-sm font-black text-white focus:outline-none focus:border-indigo-400">
+                <div class="mt-1.5 text-[10px] text-slate-400 flex items-center justify-between">
+                    <span>Player ID:</span>
+                    <span id="online-user-id-display" class="font-mono text-indigo-300 select-all">Connecting...</span>
+                </div>
+            </div>
+
+            <!-- 部屋を作る vs 部屋に入る -->
+            <div class="space-y-3">
+                <button id="create-room-btn" class="w-full py-3 px-4 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white font-black text-sm shadow-lg transition active:scale-95">
+                    ＋ 新しい対戦ルームを作る（60秒勝負）
+                </button>
+
+                <div class="bg-slate-900/70 p-3 rounded-2xl border border-slate-700">
+                    <label id="join-room-label" class="block text-[10px] font-extrabold text-slate-400 mb-1.5">友達のルーム番号（4桁）を入力して参加</label>
+                    <div class="flex space-x-2">
+                        <input id="join-room-input" type="text" maxlength="4" placeholder="1234" class="flex-1 px-3 py-2 rounded-xl bg-slate-800 border border-slate-600 text-center text-lg font-black tracking-widest text-cyan-300 uppercase focus:outline-none focus:border-cyan-400">
+                        <button id="join-room-btn" class="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-black text-sm transition active:scale-95">
+                            参加する
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="online-status-msg" class="mt-3 text-center text-xs font-bold text-amber-300 min-h-[18px]"></div>
+        </div>
+    </div>
+
+    <!-- 世界ランキング（リーダーボード）モーダル -->
+    <div id="leaderboard-modal" class="fixed inset-0 z-[60] bg-slate-950/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+        <div class="bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-indigo-400/40 rounded-3xl p-5 w-full max-w-md shadow-2xl">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center space-x-2">
+                    <span class="text-2xl">🌐</span>
+                    <div>
+                        <h2 id="lb-modal-title" class="text-lg sm:text-xl font-black text-white leading-tight">オンラインランキング</h2>
+                        <p id="lb-modal-sub" class="text-[11px] text-indigo-300 font-bold">トッププレイヤーのハイスコア一覧</p>
+                    </div>
+                </div>
+                <button id="close-lb-modal-btn" class="p-2 rounded-xl bg-slate-700/80 hover:bg-slate-600 text-slate-200 text-xs font-black transition">✕</button>
+            </div>
+            <div id="leaderboard-list" class="space-y-1.5 max-h-[58vh] overflow-y-auto pr-1">
+                <!-- JSでランキング一覧を生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- アチーブメント（実績・称号）モーダル -->
+    <div id="achievements-modal" class="fixed inset-0 z-[60] bg-slate-950/85 backdrop-blur-md hidden flex items-center justify-center p-4">
+        <div class="bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-amber-400/40 rounded-3xl p-5 w-full max-w-md shadow-2xl">
+            <div class="flex items-center justify-between mb-3">
+                <div class="flex items-center space-x-2">
+                    <span class="text-2xl">🏆</span>
+                    <div>
+                        <h2 id="ach-modal-title" class="text-lg sm:text-xl font-black text-white leading-tight">実績＆称号</h2>
+                        <p id="ach-modal-subtitle" class="text-[11px] text-amber-300 font-bold">解除済み: 0 / 8</p>
+                    </div>
+                </div>
+                <button id="close-ach-modal-btn" class="p-2 rounded-xl bg-slate-700/80 hover:bg-slate-600 text-slate-200 text-xs font-black transition">
+                    ✕
+                </button>
+            </div>
+            <div id="achievements-list" class="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+                <!-- JSでアチーブメント一覧を生成 -->
+            </div>
+        </div>
+    </div>
+
+    <!-- ゲームオーバーモーダル -->
+    <div id="gameover-modal" class="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-gradient-to-b from-slate-800 to-slate-900 border-2 border-slate-700 rounded-3xl p-6 sm:p-8 w-full max-w-sm text-center shadow-2xl transform transition-all scale-100">
+            <div id="gameover-mode-tag" class="inline-block px-3 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-400 text-xs font-extrabold tracking-widest mb-2">
+                置ける場所がありません
+            </div>
+            <h2 id="gameover-title" class="text-3xl sm:text-4xl font-black text-white mb-5 tracking-tight">ゲームオーバー</h2>
+            
+            <div class="bg-slate-950/60 rounded-2xl p-4 mb-5 border border-slate-800 space-y-3">
+                <div>
+                    <div id="final-score-label" class="text-xs font-bold text-slate-400">今回のスコア</div>
+                    <div id="final-score" class="text-4xl font-black text-cyan-400">0</div>
+                </div>
+                <div class="border-t border-slate-800 pt-2 flex justify-between items-center px-2">
+                    <span id="final-best-label" class="text-xs font-bold text-slate-400">モード最高記録</span>
+                    <span id="final-high-score" class="text-lg font-extrabold text-amber-400">0</span>
+                </div>
+                <!-- オンライン対戦勝敗結果ボックス -->
+                <div id="online-result-box" class="hidden border-t border-slate-800 pt-2.5 space-y-1">
+                    <div id="online-winner-banner" class="text-base sm:text-lg font-black text-amber-300">🏆 YOU WIN! 🏆</div>
+                    <div class="flex justify-between items-center text-xs px-2 text-slate-300">
+                        <span id="online-rival-result-name">Rival</span>
+                        <span id="online-rival-result-score" class="font-black text-rose-300">0 pts</span>
+                    </div>
+                </div>
+                <div id="new-record-badge" class="hidden text-xs font-black text-amber-300 bg-amber-500/20 border border-amber-400/40 rounded-lg py-1">
+                    🎉 ハイスコア更新！ 🎉
+                </div>
+            </div>
+
+            <div class="space-y-2.5">
+                <button id="restart-btn" class="w-full py-3.5 px-6 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-black text-lg rounded-2xl btn-pop">
+                    もう一度遊ぶ
+                </button>
+                <button id="gameover-change-mode-btn" class="w-full py-2.5 px-4 bg-slate-700/80 hover:bg-slate-600 text-slate-200 font-extrabold text-sm rounded-xl border border-slate-600 transition">
+                    モードを変更する
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        /**
+         * ジュエルブロックのカラー定義
+         */
+        const BLOCK_COLORS = [
+            { name: 'cyan', bg: 'bg-gradient-to-br from-cyan-300 via-cyan-500 to-blue-600', hex: '#06b6d4' },
+            { name: 'blue', bg: 'bg-gradient-to-br from-blue-400 via-indigo-500 to-indigo-700', hex: '#3b82f6' },
+            { name: 'emerald', bg: 'bg-gradient-to-br from-emerald-300 via-emerald-500 to-teal-700', hex: '#10b981' },
+            { name: 'amber', bg: 'bg-gradient-to-br from-amber-300 via-orange-500 to-red-600', hex: '#f59e0b' },
+            { name: 'rose', bg: 'bg-gradient-to-br from-rose-400 via-pink-600 to-purple-700', hex: '#f43f5e' },
+            { name: 'violet', bg: 'bg-gradient-to-br from-violet-400 via-purple-600 to-fuchsia-700', hex: '#8b5cf6' }
+        ];
+
+        /**
+         * Web Audio API による内蔵サウンドエフェクト管理
+         */
+        class SoundManager {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+                if (this.ctx && this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            toggleMute() {
+                this.muted = !this.muted;
+                return this.muted;
+            }
+
+            playTone(freq, type, duration, vol = 0.15, slideFreq = null) {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = type;
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime);
+                    if (slideFreq) {
+                        osc.frequency.exponentialRampToValueAtTime(slideFreq, this.ctx.currentTime + duration);
+                    }
+                    gain.gain.setValueAtTime(vol, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + duration);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + duration);
+                } catch {}
+            }
+
+            playPickup() { this.playTone(320, 'sine', 0.08, 0.12, 480); }
+            playRotate() { this.playTone(440, 'triangle', 0.1, 0.14, 660); }
+            playReturn() { this.playTone(260, 'sine', 0.1, 0.1, 180); }
+            playPlace() { this.playTone(220, 'triangle', 0.12, 0.18, 120); }
+
+            // ライン消去時のドーパミン全開・脳汁爆発サウンド
+            playClear(lines, combo) {
+                if (this.muted || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    // コンボと同時消し数に応じて基準音階をドラマチックに上昇
+                    const semitoneShift = Math.min(combo - 1, 12) + (lines - 1) * 2;
+                    const rootFreq = 523.25 * Math.pow(2, semitoneShift / 12); // C5基準
+                    // 脳が快感を覚えやすいメジャー9th＆オクターブ上昇音階（ド・ミ・ソ・シ・高いド・高いミ・高いソ）
+                    const ratios = [1, 1.25, 1.5, 1.875, 2, 2.5, 3];
+
+                    // 1. 重厚808サブベース＋スナップアタック（「ズドンッ！パチンッ！」という快感の衝撃）
+                    const subOsc = this.ctx.createOscillator();
+                    const subGain = this.ctx.createGain();
+                    subOsc.type = 'sine';
+                    subOsc.frequency.setValueAtTime(190, now);
+                    subOsc.frequency.exponentialRampToValueAtTime(42, now + 0.24);
+                    subGain.gain.setValueAtTime(0.36, now);
+                    subGain.gain.exponentialRampToValueAtTime(0.001, now + 0.26);
+                    subOsc.connect(subGain);
+                    subGain.connect(this.ctx.destination);
+                    subOsc.start(now);
+                    subOsc.stop(now + 0.27);
+
+                    const snapOsc = this.ctx.createOscillator();
+                    const snapGain = this.ctx.createGain();
+                    snapOsc.type = 'square';
+                    snapOsc.frequency.setValueAtTime(1400, now);
+                    snapOsc.frequency.exponentialRampToValueAtTime(220, now + 0.045);
+                    snapGain.gain.setValueAtTime(0.16, now);
+                    snapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.05);
+                    snapOsc.connect(snapGain);
+                    snapGain.connect(this.ctx.destination);
+                    snapOsc.start(now);
+                    snapOsc.stop(now + 0.055);
+
+                    // 2. 脳内麻薬クリスタル・アルペジオ（高速上昇＋ピッチしゃくり上げ「キュインッ！」）
+                    const noteCount = Math.min(4 + lines, ratios.length);
+                    for (let i = 0; i < noteCount; i++) {
+                        const startTime = now + i * 0.036;
+                        const freq = rootFreq * ratios[i];
+
+                        // ピッチベンド付きクリスタルベル（鳴り始めにわずかにしゃくり上げて脳を刺激）
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq * 0.94, startTime);
+                        osc.frequency.exponentialRampToValueAtTime(freq * 1.02, startTime + 0.05);
+                        osc.frequency.exponentialRampToValueAtTime(freq, startTime + 0.38);
+
+                        gain.gain.setValueAtTime(0.001, startTime);
+                        gain.gain.linearRampToValueAtTime(0.22, startTime + 0.012);
+                        gain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.42);
+
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(startTime);
+                        osc.stop(startTime + 0.43);
+
+                        // 2オクターブ上の超高音スパークル（「キランッ！」という輝き）
+                        const sparkOsc = this.ctx.createOscillator();
+                        const sparkGain = this.ctx.createGain();
+                        sparkOsc.type = 'sine';
+                        sparkOsc.frequency.setValueAtTime(freq * 2, startTime);
+                        sparkOsc.frequency.exponentialRampToValueAtTime(freq * 2.03, startTime + 0.28);
+
+                        sparkGain.gain.setValueAtTime(0.001, startTime);
+                        sparkGain.gain.linearRampToValueAtTime(0.11, startTime + 0.008);
+                        sparkGain.gain.exponentialRampToValueAtTime(0.001, startTime + 0.30);
+
+                        sparkOsc.connect(sparkGain);
+                        sparkGain.connect(this.ctx.destination);
+                        sparkOsc.start(startTime);
+                        sparkOsc.stop(startTime + 0.31);
+                    }
+
+                    // 3. 炭酸＆クリスタルクラッシュ（「シュワパチパチッ！」と弾ける快感ノイズ）
+                    const bufferSize = Math.floor(this.ctx.sampleRate * 0.34);
+                    const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                    const data = noiseBuffer.getChannelData(0);
+                    for (let i = 0; i < bufferSize; i++) {
+                        // ランダムな高周波スパーク粒を混ぜて炭酸が弾けるような質感に
+                        const pop = Math.random() < 0.04 ? (Math.random() > 0.5 ? 1 : -1) : (Math.random() * 2 - 1) * 0.45;
+                        data[i] = pop;
+                    }
+
+                    const noise = this.ctx.createBufferSource();
+                    noise.buffer = noiseBuffer;
+
+                    const filter = this.ctx.createBiquadFilter();
+                    filter.type = 'bandpass';
+                    filter.frequency.setValueAtTime(2400, now);
+                    filter.frequency.exponentialRampToValueAtTime(8500, now + 0.30);
+                    filter.Q.value = 1.2;
+
+                    const noiseGain = this.ctx.createGain();
+                    noiseGain.gain.setValueAtTime(0.22, now);
+                    noiseGain.gain.exponentialRampToValueAtTime(0.001, now + 0.33);
+
+                    noise.connect(filter);
+                    filter.connect(noiseGain);
+                    noiseGain.connect(this.ctx.destination);
+                    noise.start(now);
+                    noise.stop(now + 0.34);
+
+                    // 4. フィナーレのゴールデン・ファンファーレ余韻（確変・報酬確定のようなキラキラ和音）
+                    const fanfareStart = now + noteCount * 0.036;
+                    const chordRatios = lines >= 2 || combo >= 2 ? [2, 2.5, 3, 4] : [2, 2.5, 3];
+                    chordRatios.forEach((r, idx) => {
+                        const fOsc = this.ctx.createOscillator();
+                        const fGain = this.ctx.createGain();
+                        fOsc.type = 'sine';
+                        const t = fanfareStart + idx * 0.025;
+                        fOsc.frequency.setValueAtTime(rootFreq * r, t);
+                        fGain.gain.setValueAtTime(0.001, t);
+                        fGain.gain.linearRampToValueAtTime(0.09, t + 0.015);
+                        fGain.gain.exponentialRampToValueAtTime(0.0008, t + 0.48);
+                        fOsc.connect(fGain);
+                        fGain.connect(this.ctx.destination);
+                        fOsc.start(t);
+                        fOsc.stop(t + 0.5);
+                    });
+                } catch {}
+            }
+
+            playExplosion() {
+                if (this.muted || !this.ctx) return;
+                // ボム爆発もドーパミン全開の重低音＋キラキラ爆散サウンドに
+                this.playTone(140, 'sawtooth', 0.4, 0.28, 38);
+                setTimeout(() => this.playTone(320, 'square', 0.28, 0.16, 65), 50);
+                setTimeout(() => this.playClear(3, 3), 90);
+            }
+
+            playGameOver() {
+                [380, 340, 300, 240].forEach((freq, idx) => {
+                    setTimeout(() => this.playTone(freq, 'sawtooth', 0.22, 0.14, freq * 0.85), idx * 140);
+                });
+            }
+        }
+
+        /**
+         * ライン消去・爆破時のパーティクルエフェクト
+         */
+        class ParticleSystem {
+            constructor(canvas) {
+                this.canvas = canvas;
+                this.ctx = canvas.getContext('2d');
+                this.particles = [];
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                this.loop();
+            }
+
+            resize() {
+                if (!this.canvas || !this.canvas.parentElement) return;
+                this.canvas.width = this.canvas.parentElement.clientWidth;
+                this.canvas.height = this.canvas.parentElement.clientHeight;
+            }
+
+            spawn(x, y, color, count = 8) {
+                for (let i = 0; i < count; i++) {
+                    const angle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.5;
+                    const speed = 1.5 + Math.random() * 4.5;
+                    this.particles.push({
+                        x, y,
+                        vx: Math.cos(angle) * speed,
+                        vy: Math.sin(angle) * speed - 1,
+                        size: 3 + Math.random() * 4,
+                        color,
+                        alpha: 1,
+                        decay: 0.025 + Math.random() * 0.02
+                    });
+                }
+            }
+
+            loop() {
+                if (this.ctx && this.canvas.width > 0) {
+                    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                    for (let i = this.particles.length - 1; i >= 0; i--) {
+                        const p = this.particles[i];
+                        p.x += p.vx;
+                        p.y += p.vy;
+                        p.vy += 0.12;
+                        p.alpha -= p.decay;
+                        if (p.alpha <= 0) {
+                            this.particles.splice(i, 1);
+                            continue;
+                        }
+                        this.ctx.globalAlpha = p.alpha;
+                        this.ctx.fillStyle = p.color;
+                        this.ctx.beginPath();
+                        this.ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                        this.ctx.fill();
+                    }
+                    this.ctx.globalAlpha = 1;
+                }
+                requestAnimationFrame(() => this.loop());
+            }
+        }
+
+        /**
+         * ポリオミノ形状定義（すべて4マスで構成されたテトロミノのみ）
+         * I字(4)・O字(2x2)・T字(4)・L字(4)・J字(4)・S字(4)・Z字(4)の全19パターン
+         */
+        const PIECE_SHAPES = [
+            // I字 (4マス)
+            { matrix: [[1, 1, 1, 1]], weights: { hint: 8, easy: 8, normal: 6, timeattack: 8, hard: 5, sousou: 10 } },
+            { matrix: [[1], [1], [1], [1]], weights: { hint: 8, easy: 8, normal: 6, timeattack: 8, hard: 5, sousou: 10 } },
+            // O字 (2x2正方形・4マス)
+            { matrix: [[1, 1], [1, 1]], weights: { hint: 12, easy: 12, normal: 8, timeattack: 10, hard: 5, sousou: 9 } },
+            // T字 (4マス・4向き)
+            { matrix: [[1, 1, 1], [0, 1, 0]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            { matrix: [[0, 1, 0], [1, 1, 1]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            { matrix: [[1, 0], [1, 1], [1, 0]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            { matrix: [[0, 1], [1, 1], [0, 1]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            // L字 (4マス・4向き)
+            { matrix: [[1, 0], [1, 0], [1, 1]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            { matrix: [[1, 1, 1], [1, 0, 0]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            { matrix: [[1, 1], [0, 1], [0, 1]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            { matrix: [[0, 0, 1], [1, 1, 1]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            // J字 (4マス・4向き)
+            { matrix: [[0, 1], [0, 1], [1, 1]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            { matrix: [[1, 0, 0], [1, 1, 1]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            { matrix: [[1, 1], [1, 0], [1, 0]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            { matrix: [[1, 1, 1], [0, 0, 1]], weights: { hint: 7, easy: 7, normal: 6, timeattack: 6, hard: 7, sousou: 6 } },
+            // S字 (4マス・2向き)
+            { matrix: [[0, 1, 1], [1, 1, 0]], weights: { hint: 3, easy: 3, normal: 5, timeattack: 4, hard: 9, sousou: 4 } },
+            { matrix: [[1, 0], [1, 1], [0, 1]], weights: { hint: 3, easy: 3, normal: 5, timeattack: 4, hard: 9, sousou: 4 } },
+            // Z字 (4マス・2向き)
+            { matrix: [[1, 1, 0], [0, 1, 1]], weights: { hint: 3, easy: 3, normal: 5, timeattack: 4, hard: 9, sousou: 4 } },
+            { matrix: [[0, 1], [1, 1], [1, 0]], weights: { hint: 3, easy: 3, normal: 5, timeattack: 4, hard: 9, sousou: 4 } }
+        ];
+
+        /**
+         * アチーブメント（実績＆称号）定義リスト
+         */
+        const ACHIEVEMENTS = [
+            { id: 'first_clear', icon: '✨', titleJa: 'はじめの一消し', titleEn: 'First Line Clear', descJa: '初めてラインを1列以上消去する', descEn: 'Clear your first row or column' },
+            { id: 'combo_3', icon: '🔥', titleJa: 'コンボマスター', titleEn: 'Combo Master', descJa: '3連続コンボを達成する', descEn: 'Reach a 3x combo streak' },
+            { id: 'multi_3', icon: '💎', titleJa: 'トリプルブレイカー', titleEn: 'Triple Breaker', descJa: '同時に3ライン以上を一度に消す', descEn: 'Clear 3 or more lines at once' },
+            { id: 'all_clear', icon: '🌈', titleJa: 'パーフェクト・クリア', titleEn: 'Board Sweeper', descJa: 'ボード上のブロックを全消しする', descEn: 'Achieve a complete All Clear' },
+            { id: 'use_hold', icon: '📦', titleJa: '戦術のキープ', titleEn: 'Tactical Keeper', descJa: 'ホールド枠にブロックを預ける', descEn: 'Store a block in the HOLD slot' },
+            { id: 'score_2000', icon: '⭐', titleJa: 'ハイスコアラー', titleEn: 'High Scorer', descJa: '1プレイで2,000点以上を獲得する', descEn: 'Score 2,000+ points in a single game' },
+            { id: 'score_5000', icon: '👑', titleJa: 'ブロック王', titleEn: 'Block Monarch', descJa: '1プレイで5,000点以上を獲得する', descEn: 'Score 5,000+ points in a single game' },
+            { id: 'time_survivor', icon: '⏱️', titleJa: 'スピードスター', titleEn: 'Speedster', descJa: 'タイムアタックモードで1,500点以上獲得する', descEn: 'Score 1,500+ points in Time Attack mode' },
+            { id: 'online_match', icon: '🌐', titleJa: 'オンラインデビュー', titleEn: 'Online Challenger', descJa: 'オンライン対戦モードをプレイする', descEn: 'Play an Online VS Match' }
+        ];
+
+        /**
+         * 多言語テキスト辞書（日本語 / 英語）
+         */
+        const I18N = {
+            ja: {
+                pageTitle: 'ブロックブラスト！',
+                langToggleBtn: 'EN',
+                modalSubtitle: 'ブロックパズル',
+                modalTitle: 'モードを選択',
+                modalDesc: '好きなプレイスタイルを選んでスタート！',
+                resumeBtn: '現在のゲームに戻る',
+                noMoreMoves: '置ける場所がありません',
+                timeUp: 'タイムアップ！',
+                gameOverTitle: 'ゲームオーバー',
+                finalScoreLabel: '今回のスコア',
+                finalBestLabel: 'モード最高記録',
+                newRecord: '🎉 ハイスコア更新！ 🎉',
+                playAgain: 'もう一度遊ぶ',
+                changeMode: 'モードを変更する',
+                bombBlast: '💣 爆破！',
+                allClear: '✨ 全消し達成！ ✨',
+                holdEmpty: 'ここへ\n預ける',
+                holdLocked: '使用済',
+                timeLimitLabel: '制限時間:',
+                achModalTitle: '実績＆称号',
+                achUnlockedToast: '🏆 実績解除！',
+                achProgress: (u, t) => `解除済み: ${u} / ${t}`,
+                linesCleared: (n) => `${n}ライン消去！`,
+                onlineModalTitle: 'オンライン対戦ロビー',
+                onlineModalSub: '同じルーム番号を入力して友達と対戦！',
+                onlineNameLabel: 'プレイヤー名（ランキングにも表示）',
+                createRoomBtn: '＋ 新しい対戦ルームを作る（60秒勝負）',
+                joinRoomLabel: '友達のルーム番号（4桁）を入力して参加',
+                joinRoomBtn: '参加する',
+                lbModalTitle: 'オンラインランキング',
+                lbModalSub: 'トッププレイヤーのハイスコア一覧',
+                waitingRival: '対戦相手待ち...',
+                youWin: '🏆 あなたの勝ち！ 🏆',
+                youLose: '😢 相手の勝ち... 😢',
+                drawMatch: '🤝 引き分け！ 🤝',
+                modes: {
+                    hint: {
+                        short: 'ヒントあり',
+                        full: 'ヒントありモード',
+                        badge: 'おすすめ',
+                        cardDesc: '10秒悩むとおすすめの置き場所が光る＋タップで90°回転！',
+                        hintBar: '💡 10秒経つとおすすめの置き場所が光るよ！（タップで回転）'
+                    },
+                    easy: {
+                        short: 'イージー',
+                        full: 'イージーモード',
+                        badge: '回転あり',
+                        cardDesc: '手持ちブロックをタップすると90°回転して置ける！',
+                        hintBar: '💡 すべて4マスブロック！タップで90°回転できます'
+                    },
+                    normal: {
+                        short: 'ノーマル',
+                        full: 'ノーマルモード',
+                        badge: '定番',
+                        cardDesc: '標準ルールの王道パズル。ハイスコアを目指そう！',
+                        hintBar: '縦や横の列を揃えてブロックを消そう！'
+                    },
+                    timeattack: {
+                        short: 'タイムアタック',
+                        full: 'タイムアタック',
+                        badge: '時間制限',
+                        cardDesc: '制限時間内にハイスコア勝負！ライン消去で時間延長！',
+                        hintBar: '⏱️ ライン消去で+2秒延長！時間切れ前に消しまくれ！'
+                    },
+                    hard: {
+                        short: 'ハード',
+                        full: 'ハードモード',
+                        badge: '上級者向け',
+                        cardDesc: '初期ブロック配置＋S/Z/L字が多めに出現（スコア1.5倍）！',
+                        hintBar: '🔥 初期ブロックあり＆難関形状多め（スコア1.5倍）！'
+                    },
+                    sousou: {
+                        short: 'そうそう',
+                        full: 'そうそうモード',
+                        badge: 'スコア2倍',
+                        cardDesc: '開幕大連鎖＆3×3爆破ボム出現！超爽快フィーバー！',
+                        hintBar: '💣 スコア2倍＆4マス爆破ボム出現！超爽快フィーバー！'
+                    },
+                    online: {
+                        short: 'オンラインVS',
+                        full: 'オンライン対戦',
+                        badge: 'VS 2人対戦',
+                        cardDesc: '合言葉（ルームID）で友達とリアルタイム60秒スコア対決！',
+                        hintBar: '🌐 オンライン対戦中！60秒で相手より高いスコアを出そう！'
+                    }
+                }
+            },
+            en: {
+                pageTitle: 'Block Blast!',
+                langToggleBtn: '日本語',
+                modalSubtitle: 'BLOCK PUZZLE',
+                modalTitle: 'SELECT MODE',
+                modalDesc: 'Choose your playstyle to start!',
+                resumeBtn: 'RESUME CURRENT GAME',
+                noMoreMoves: 'NO MORE MOVES',
+                timeUp: 'TIME UP!',
+                gameOverTitle: 'GAME OVER',
+                finalScoreLabel: 'FINAL SCORE',
+                finalBestLabel: 'MODE BEST',
+                newRecord: '🎉 NEW HIGH SCORE! 🎉',
+                playAgain: 'PLAY AGAIN',
+                changeMode: 'CHANGE MODE',
+                bombBlast: '💣 BLAST!',
+                allClear: '✨ ALL CLEAR! ✨',
+                holdEmpty: 'DROP TO\nHOLD',
+                holdLocked: 'LOCKED',
+                timeLimitLabel: 'Time Limit:',
+                achModalTitle: 'ACHIEVEMENTS',
+                achUnlockedToast: '🏆 ACHIEVEMENT UNLOCKED!',
+                achProgress: (u, t) => `Unlocked: ${u} / ${t}`,
+                linesCleared: (n) => `${n} LINES!`,
+                onlineModalTitle: 'ONLINE VS LOBBY',
+                onlineModalSub: 'Share a 4-digit Room ID to battle a friend!',
+                onlineNameLabel: 'Player Name (Shown on Leaderboard)',
+                createRoomBtn: '+ CREATE NEW VS ROOM (60s Match)',
+                joinRoomLabel: 'Enter Friend’s 4-Digit Room Code',
+                joinRoomBtn: 'JOIN',
+                lbModalTitle: 'GLOBAL LEADERBOARD',
+                lbModalSub: 'Top Online High Scores',
+                waitingRival: 'Waiting...',
+                youWin: '🏆 YOU WIN! 🏆',
+                youLose: '😢 RIVAL WINS... 😢',
+                drawMatch: '🤝 DRAW MATCH! 🤝',
+                modes: {
+                    hint: {
+                        short: 'HINT',
+                        full: 'HINT MODE',
+                        badge: 'GUIDE',
+                        cardDesc: 'Glowing best-move guide after 10s idle + tap to rotate 90°!',
+                        hintBar: '💡 Best move glows after 10s! (Tap piece to rotate)'
+                    },
+                    easy: {
+                        short: 'EASY',
+                        full: 'EASY MODE',
+                        badge: 'ROTATE',
+                        cardDesc: '4-block tetrominoes + tap to rotate 90°!',
+                        hintBar: '💡 All 4-block shapes! Tap a piece to rotate 90°'
+                    },
+                    normal: {
+                        short: 'NORMAL',
+                        full: 'NORMAL MODE',
+                        badge: 'CLASSIC',
+                        cardDesc: 'Classic balanced rules. Aim for a high score!',
+                        hintBar: 'Clear rows and columns to rack up high scores!'
+                    },
+                    timeattack: {
+                        short: 'TIME ATTACK',
+                        full: 'TIME ATTACK',
+                        badge: 'TIMED',
+                        cardDesc: 'Race against the clock! Clear lines to gain +2s!',
+                        hintBar: '⏱️ Clear lines for +2s bonus time! Beat the clock!'
+                    },
+                    hard: {
+                        short: 'HARD',
+                        full: 'HARD MODE',
+                        badge: 'EXPERT',
+                        cardDesc: 'Pre-placed blocks + frequent S, Z & L shapes (1.5x pts)!',
+                        hintBar: '🔥 Starter obstacles & tricky shapes (1.5x Score)!'
+                    },
+                    sousou: {
+                        short: 'FEVER',
+                        full: 'FEVER MODE',
+                        badge: '2X SCORE',
+                        cardDesc: 'Instant mega-combos, 3x3 blast bombs & 2x score!',
+                        hintBar: '💣 2x Score & 4-block Blast Bombs! Trigger mega-combos!'
+                    },
+                    online: {
+                        short: 'ONLINE VS',
+                        full: 'ONLINE VS',
+                        badge: '2P BATTLE',
+                        cardDesc: 'Real-time 60s score battle with a friend via Room ID!',
+                        hintBar: '🌐 Online VS! Outscore your rival in 60 seconds!'
+                    }
+                }
+            }
+        };
+
+        /**
+         * 7つのゲームモード設定定義
+         */
+        const GAME_MODES = {
+            hint: {
+                id: 'hint',
+                scoreMultiplier: 1,
+                allowRotate: true,
+                showHintGuide: true,
+                isTimed: false,
+                bombChance: 0,
+                badgeClass: 'bg-sky-500/20 border-sky-400/50 text-sky-300',
+                boardBorderClass: 'border-sky-400/50',
+                bodyBg: 'radial-gradient(circle at center, #0c4a6e 0%, #0f172a 100%)'
+            },
+            easy: {
+                id: 'easy',
+                scoreMultiplier: 1,
+                allowRotate: true,
+                showHintGuide: false,
+                isTimed: false,
+                bombChance: 0,
+                badgeClass: 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300',
+                boardBorderClass: 'border-emerald-500/50',
+                bodyBg: 'radial-gradient(circle at center, #064e3b 0%, #0f172a 100%)'
+            },
+            normal: {
+                id: 'normal',
+                scoreMultiplier: 1,
+                allowRotate: false,
+                showHintGuide: false,
+                isTimed: false,
+                bombChance: 0,
+                badgeClass: 'bg-blue-500/20 border-blue-400/50 text-blue-300',
+                boardBorderClass: 'border-slate-700/90',
+                bodyBg: 'radial-gradient(circle at center, #1e293b 0%, #0f172a 100%)'
+            },
+            timeattack: {
+                id: 'timeattack',
+                scoreMultiplier: 1.2,
+                allowRotate: false,
+                showHintGuide: false,
+                isTimed: true,
+                bombChance: 0,
+                badgeClass: 'bg-cyan-500/25 border-cyan-400/50 text-cyan-300',
+                boardBorderClass: 'border-cyan-400/50',
+                bodyBg: 'radial-gradient(circle at center, #164e63 0%, #0f172a 100%)'
+            },
+            hard: {
+                id: 'hard',
+                scoreMultiplier: 1.5,
+                allowRotate: false,
+                showHintGuide: false,
+                isTimed: false,
+                bombChance: 0,
+                badgeClass: 'bg-rose-500/25 border-rose-400/50 text-rose-300',
+                boardBorderClass: 'border-rose-500/50',
+                bodyBg: 'radial-gradient(circle at center, #4c0519 0%, #0f172a 100%)'
+            },
+            sousou: {
+                id: 'sousou',
+                scoreMultiplier: 2,
+                allowRotate: false,
+                showHintGuide: false,
+                isTimed: false,
+                bombChance: 0.22,
+                badgeClass: 'bg-gradient-to-r from-amber-500/30 to-pink-500/30 border-amber-400/60 text-amber-200',
+                boardBorderClass: 'border-amber-400/60',
+                bodyBg: 'radial-gradient(circle at center, #451a03 0%, #1e1b4b 55%, #0f172a 100%)'
+            },
+            online: {
+                id: 'online',
+                scoreMultiplier: 1.2,
+                allowRotate: false,
+                showHintGuide: false,
+                isTimed: true,
+                bombChance: 0,
+                badgeClass: 'bg-indigo-500/30 border-indigo-400/60 text-indigo-200',
+                boardBorderClass: 'border-indigo-400/60',
+                bodyBg: 'radial-gradient(circle at center, #312e81 0%, #0f172a 100%)'
+            }
+        };
+
+        /**
+         * 全消し（ALL CLEAR）達成時に切り替わるスペシャル背景テーマ一覧
+         */
+        const ALL_CLEAR_BACKGROUNDS = [
+            'radial-gradient(circle at center, #312e81 0%, #581c87 50%, #0f172a 100%)', // ギャラクシーパープル
+            'radial-gradient(circle at center, #065f46 0%, #0e7490 50%, #0f172a 100%)', // オーロラエメラルド
+            'radial-gradient(circle at center, #9a3412 0%, #9d174d 50%, #0f172a 100%)', // サンセットクリムゾン
+            'radial-gradient(circle at center, #854d0e 0%, #1e3a8a 55%, #0f172a 100%)', // ゴールデンロイヤル
+            'radial-gradient(circle at center, #115e59 0%, #4c1d95 55%, #0f172a 100%)'  // コスミックティール
+        ];
+
+        /**
+         * メインゲームコントローラー
+         */
+        class BlockBlastGame {
+            constructor() {
+                this.BOARD_SIZE = 8;
+                this.lang = localStorage.getItem('blockBlastLang') || 'ja'; // 最初は日本語表記
+                this.board = Array.from({ length: this.BOARD_SIZE }, () => Array(this.BOARD_SIZE).fill(null));
+                this.tray = [null, null, null];
+                this.holdPiece = null;      // ホールド枠に預けているピース
+                this.holdUsedThisTurn = false; // 連続無限スワップ防止フラグ（1ブロック配置すると解除）
+                this.score = 0;
+                this.combo = 0;
+                this.allClearCount = 0; // 全消し達成回数（背景切替インデックス用）
+                this.currentMode = 'hint';
+                this.hasStarted = false;
+                this.isGameOver = false;
+                this.bestHintCells = []; // ヒントありモード用の推奨セル座標リスト
+                this.hintVisible = false; // 10秒経過後にtrueになるヒント表示フラグ
+                this.hintTimer = null;    // 10秒待機用タイマーID
+
+                // タイムアタック用状態
+                this.customTimeLimit = parseInt(localStorage.getItem('blockBlastCustomTime') || '60', 10);
+                this.timeRemaining = this.customTimeLimit;
+                this.timeAttackInterval = null;
+
+                // アチーブメント解除状態
+                this.unlockedAchievements = new Set(
+                    JSON.parse(localStorage.getItem('blockBlastAchievements') || '[]')
+                );
+
+                this.highScores = {
+                    hint: parseInt(localStorage.getItem('blockBlastBest_hint') || '0', 10),
+                    easy: parseInt(localStorage.getItem('blockBlastBest_easy') || '0', 10),
+                    normal: parseInt(localStorage.getItem('blockBlastBest_normal') || '0', 10),
+                    timeattack: parseInt(localStorage.getItem('blockBlastBest_timeattack') || '0', 10),
+                    hard: parseInt(localStorage.getItem('blockBlastBest_hard') || '0', 10),
+                    sousou: parseInt(localStorage.getItem('blockBlastBest_sousou') || '0', 10),
+                    online: parseInt(localStorage.getItem('blockBlastBest_online') || '0', 10)
+                };
+
+                // オンライン機能用ステート
+                this.cloudDb = null;
+                this.cloudUser = null;
+                this.appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+                this.playerName = localStorage.getItem('blockBlastPlayerName') || 'Player';
+                this.roomId = null;
+                this.roomRole = null; // 'host' or 'guest'
+                this.roomUnsubscribe = null;
+                this.leaderboardUnsubscribe = null;
+                this.rivalName = 'Rival';
+                this.rivalScore = 0;
+                this.leaderboardEntries = [];
+
+                this.sound = new SoundManager();
+                this.particles = new ParticleSystem(document.getElementById('particle-canvas'));
+
+                // DOM要素のキャッシュ
+                this.bodyEl = document.getElementById('app-body');
+                this.boardEl = document.getElementById('game-board');
+                this.boardWrapperEl = document.getElementById('board-wrapper');
+                this.scoreEl = document.getElementById('current-score');
+                this.highScoreEl = document.getElementById('high-score');
+                this.comboBadgeEl = document.getElementById('combo-badge');
+                this.headerModeBtn = document.getElementById('header-mode-btn');
+                this.headerModeLabel = document.getElementById('header-mode-label');
+                this.timerBadgeEl = document.getElementById('timer-badge');
+                this.timerDisplayEl = document.getElementById('timer-display');
+                this.modeHintText = document.getElementById('mode-hint-text');
+                this.popupLayer = document.getElementById('popup-layer');
+                this.dragLayer = document.getElementById('drag-layer');
+                this.modeSelectModal = document.getElementById('mode-select-modal');
+                this.closeModeModalBtn = document.getElementById('close-mode-modal-btn');
+                this.achievementsModal = document.getElementById('achievements-modal');
+                this.gameoverModal = document.getElementById('gameover-modal');
+                this.holdBoxEl = document.getElementById('hold-box');
+                this.holdSlotEl = document.getElementById('hold-slot');
+                this.slots = [
+                    document.getElementById('slot-0'),
+                    document.getElementById('slot-1'),
+                    document.getElementById('slot-2')
+                ];
+
+                // ドラッグ状態管理（slotIndex: 0〜2 はトレイ、'hold' はホールド枠）
+                this.dragState = {
+                    active: false,
+                    slotIndex: -1,
+                    piece: null,
+                    isTouch: false,
+                    startX: 0,
+                    startY: 0,
+                    hasMoved: false,
+                    cellSize: 40,
+                    targetRow: -1,
+                    targetCol: -1,
+                    canDrop: false,
+                    overHold: false
+                };
+
+                this.cellElements = [];
+                this.initBoardDOM();
+                this.initTimePresetUI();
+                this.bindEvents();
+                this.applyLanguage();
+                this.updateModeBestUI();
+                this.updateAchievementBadgesUI();
+                this.initCloudService();
+            }
+
+            /**
+             * オンライン通信（認証・リアルタイム同期・ランキング）の初期化
+             */
+            async initCloudService() {
+                try {
+                    if (!window.CloudSDK || typeof __firebase_config === 'undefined') return;
+                    const firebaseConfig = JSON.parse(__firebase_config);
+                    const app = window.CloudSDK.initializeApp(firebaseConfig);
+                    const auth = window.CloudSDK.getAuth(app);
+                    this.cloudDb = window.CloudSDK.getFirestore(app);
+
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        const cred = await window.CloudSDK.signInWithCustomToken(auth, __initial_auth_token);
+                        this.cloudUser = cred.user;
+                    } else {
+                        const cred = await window.CloudSDK.signInAnonymously(auth);
+                        this.cloudUser = cred.user;
+                    }
+
+                    const uidEl = document.getElementById('online-user-id-display');
+                    if (uidEl && this.cloudUser) {
+                        uidEl.textContent = this.cloudUser.uid;
+                    }
+                    this.subscribeLeaderboard();
+                } catch (err) {
+                    const uidEl = document.getElementById('online-user-id-display');
+                    if (uidEl) uidEl.textContent = 'Offline Mode';
+                }
+            }
+
+            subscribeLeaderboard() {
+                if (!this.cloudDb || !this.cloudUser) return;
+                const { collection, onSnapshot } = window.CloudSDK;
+                const lbCol = collection(this.cloudDb, 'artifacts', this.appId, 'public', 'data', 'leaderboard');
+
+                this.leaderboardUnsubscribe = onSnapshot(lbCol, (snapshot) => {
+                    const list = [];
+                    snapshot.forEach(docSnap => {
+                        list.push({ id: docSnap.id, ...docSnap.data() });
+                    });
+                    list.sort((a, b) => (b.score || 0) - (a.score || 0));
+                    this.leaderboardEntries = list.slice(0, 20);
+                    if (!document.getElementById('leaderboard-modal').classList.contains('hidden')) {
+                        this.renderLeaderboardList();
+                    }
+                }, () => {});
+            }
+
+            async submitOnlineLeaderboardScore(newScore) {
+                if (!this.cloudDb || !this.cloudUser || newScore <= 0) return;
+                try {
+                    const { doc, getDoc, setDoc } = window.CloudSDK;
+                    const userDocRef = doc(this.cloudDb, 'artifacts', this.appId, 'public', 'data', 'leaderboard', this.cloudUser.uid);
+                    const existing = await getDoc(userDocRef);
+                    const prevBest = existing.exists() ? (existing.data().score || 0) : 0;
+
+                    if (newScore > prevBest) {
+                        await setDoc(userDocRef, {
+                            uid: this.cloudUser.uid,
+                            name: this.playerName || 'Player',
+                            score: newScore,
+                            mode: this.currentMode,
+                            updatedAt: Date.now()
+                        });
+                    }
+                } catch {}
+            }
+
+            renderLeaderboardList() {
+                const listEl = document.getElementById('leaderboard-list');
+                listEl.innerHTML = '';
+
+                if (this.leaderboardEntries.length === 0) {
+                    listEl.innerHTML = `<div class="text-center text-xs text-slate-400 py-6">${this.lang === 'ja' ? 'まだ記録がありません。最初の1位を目指そう！' : 'No scores yet. Be the first #1!'}</div>`;
+                    return;
+                }
+
+                this.leaderboardEntries.forEach((entry, idx) => {
+                    const isMe = this.cloudUser && entry.uid === this.cloudUser.uid;
+                    const rankMedal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : `#${idx + 1}`;
+                    const row = document.createElement('div');
+                    row.className = isMe
+                        ? 'p-2.5 rounded-xl bg-indigo-900/70 border border-indigo-400/60 flex items-center justify-between'
+                        : 'p-2.5 rounded-xl bg-slate-900/70 border border-slate-700/60 flex items-center justify-between';
+
+                    row.innerHTML = `
+                        <div class="flex items-center space-x-2.5 min-w-0">
+                            <span class="w-7 text-center font-black text-sm shrink-0">${rankMedal}</span>
+                            <div class="min-w-0">
+                                <div class="font-black text-xs sm:text-sm ${isMe ? 'text-cyan-300' : 'text-white'} truncate">${entry.name || 'Player'}</div>
+                                <div class="text-[9px] text-slate-400 font-mono truncate">ID: ${(entry.uid || '').slice(0, 10)}...</div>
+                            </div>
+                        </div>
+                        <div class="font-black text-sm sm:text-base text-amber-400 shrink-0 ml-2">${(entry.score || 0).toLocaleString()}</div>
+                    `;
+                    listEl.appendChild(row);
+                });
+            }
+
+            async createOnlineRoom() {
+                const statusEl = document.getElementById('online-status-msg');
+                if (!this.cloudDb || !this.cloudUser) {
+                    statusEl.textContent = this.lang === 'ja' ? 'オンライン接続準備中です...' : 'Connecting to online server...';
+                    return;
+                }
+                const code = String(Math.floor(1000 + Math.random() * 9000));
+                this.roomId = code;
+                this.roomRole = 'host';
+                this.rivalName = I18N[this.lang].waitingRival;
+                this.rivalScore = 0;
+
+                const { doc, setDoc } = window.CloudSDK;
+                const roomRef = doc(this.cloudDb, 'artifacts', this.appId, 'public', 'data', 'vs_rooms', code);
+                await setDoc(roomRef, {
+                    roomId: code,
+                    hostUid: this.cloudUser.uid,
+                    hostName: this.playerName,
+                    hostScore: 0,
+                    guestUid: null,
+                    guestName: null,
+                    guestScore: 0,
+                    createdAt: Date.now()
+                });
+
+                this.listenToRoom(code);
+                document.getElementById('online-lobby-modal').classList.add('hidden');
+                this.unlockAchievement('online_match');
+                this.startNewGame('online');
+            }
+
+            async joinOnlineRoom() {
+                const statusEl = document.getElementById('online-status-msg');
+                const code = document.getElementById('join-room-input').value.trim();
+                if (code.length !== 4) {
+                    statusEl.textContent = this.lang === 'ja' ? '4桁のルーム番号を入力してください' : 'Enter a 4-digit Room ID';
+                    return;
+                }
+                if (!this.cloudDb || !this.cloudUser) {
+                    statusEl.textContent = this.lang === 'ja' ? 'オンライン接続準備中です...' : 'Connecting...';
+                    return;
+                }
+
+                const { doc, getDoc, updateDoc } = window.CloudSDK;
+                const roomRef = doc(this.cloudDb, 'artifacts', this.appId, 'public', 'data', 'vs_rooms', code);
+                const snap = await getDoc(roomRef);
+                if (!snap.exists()) {
+                    statusEl.textContent = this.lang === 'ja' ? 'ルームが見つかりません' : 'Room not found';
+                    return;
+                }
+
+                const data = snap.data();
+                this.roomId = code;
+                this.roomRole = 'guest';
+                this.rivalName = data.hostName || 'Host';
+                this.rivalScore = data.hostScore || 0;
+
+                await updateDoc(roomRef, {
+                    guestUid: this.cloudUser.uid,
+                    guestName: this.playerName,
+                    guestScore: 0
+                });
+
+                this.listenToRoom(code);
+                document.getElementById('online-lobby-modal').classList.add('hidden');
+                this.unlockAchievement('online_match');
+                this.startNewGame('online');
+            }
+
+            listenToRoom(code) {
+                if (this.roomUnsubscribe) {
+                    this.roomUnsubscribe();
+                    this.roomUnsubscribe = null;
+                }
+                if (!this.cloudDb || !this.cloudUser) return;
+
+                const { doc, onSnapshot } = window.CloudSDK;
+                const roomRef = doc(this.cloudDb, 'artifacts', this.appId, 'public', 'data', 'vs_rooms', code);
+                this.roomUnsubscribe = onSnapshot(roomRef, (snap) => {
+                    if (!snap.exists()) return;
+                    const data = snap.data();
+                    if (this.roomRole === 'host') {
+                        this.rivalName = data.guestName || I18N[this.lang].waitingRival;
+                        this.rivalScore = data.guestScore || 0;
+                    } else {
+                        this.rivalName = data.hostName || 'Host';
+                        this.rivalScore = data.hostScore || 0;
+                    }
+                    this.updateOnlineVsBarUI();
+                }, () => {});
+            }
+
+            async syncMyScoreToRoom() {
+                if (this.currentMode !== 'online' || !this.roomId || !this.cloudDb || !this.cloudUser) return;
+                try {
+                    const { doc, updateDoc } = window.CloudSDK;
+                    const roomRef = doc(this.cloudDb, 'artifacts', this.appId, 'public', 'data', 'vs_rooms', this.roomId);
+                    if (this.roomRole === 'host') {
+                        await updateDoc(roomRef, { hostScore: this.score, hostName: this.playerName });
+                    } else {
+                        await updateDoc(roomRef, { guestScore: this.score, guestName: this.playerName });
+                    }
+                } catch {}
+            }
+
+            updateOnlineVsBarUI() {
+                document.getElementById('vs-room-code').textContent = this.roomId || '----';
+                document.getElementById('vs-my-name').textContent = `${this.playerName} (${this.score})`;
+                document.getElementById('vs-rival-name').textContent = this.rivalName;
+                document.getElementById('vs-rival-score').textContent = this.rivalScore;
+            }
+
+            initBoardDOM() {
+                this.boardEl.innerHTML = '';
+                this.cellElements = [];
+                for (let r = 0; r < this.BOARD_SIZE; r++) {
+                    const rowEls = [];
+                    for (let c = 0; c < this.BOARD_SIZE; c++) {
+                        const cell = document.createElement('div');
+                        cell.className = 'board-cell w-full h-full flex items-center justify-center text-sm sm:text-base';
+                        this.boardEl.appendChild(cell);
+                        rowEls.push(cell);
+                    }
+                    this.cellElements.push(rowEls);
+                }
+            }
+
+            /**
+             * 日本語 / 英語の表示テキストを一括反映
+             */
+            applyLanguage() {
+                const t = I18N[this.lang];
+                document.documentElement.lang = this.lang;
+                document.title = t.pageTitle;
+
+                // 言語切替ボタンラベル
+                document.getElementById('lang-btn').textContent = t.langToggleBtn;
+                document.getElementById('modal-lang-btn').textContent = t.langToggleBtn;
+
+                // モーダル共通
+                document.getElementById('modal-subtitle').textContent = t.modalSubtitle;
+                document.getElementById('modal-title').textContent = t.modalTitle;
+                document.getElementById('modal-desc').textContent = t.modalDesc;
+                this.closeModeModalBtn.textContent = t.resumeBtn;
+                document.getElementById('time-limit-label').textContent = t.timeLimitLabel;
+
+                // アチーブメントモーダル
+                document.getElementById('ach-modal-title').textContent = t.achModalTitle;
+                this.updateAchievementBadgesUI();
+
+                // 各モードカード
+                ['hint', 'easy', 'normal', 'timeattack', 'hard', 'sousou', 'online'].forEach(mKey => {
+                    const mText = t.modes[mKey];
+                    document.getElementById(`mode-title-${mKey}`).textContent = mText.full;
+                    document.getElementById(`mode-badge-${mKey}`).textContent = mText.badge;
+                    document.getElementById(`mode-desc-${mKey}`).textContent = mText.cardDesc;
+                });
+
+                // オンラインロビー＆ランキング文言
+                document.getElementById('online-modal-title').textContent = t.onlineModalTitle;
+                document.getElementById('online-modal-sub').textContent = t.onlineModalSub;
+                document.getElementById('online-name-label').textContent = t.onlineNameLabel;
+                document.getElementById('create-room-btn').textContent = t.createRoomBtn;
+                document.getElementById('join-room-label').textContent = t.joinRoomLabel;
+                document.getElementById('join-room-btn').textContent = t.joinRoomBtn;
+                document.getElementById('lb-modal-title').textContent = t.lbModalTitle;
+                document.getElementById('lb-modal-sub').textContent = t.lbModalSub;
+
+                // ゲームオーバー画面
+                document.getElementById('gameover-title').textContent = t.gameOverTitle;
+                document.getElementById('final-score-label').textContent = t.finalScoreLabel;
+                document.getElementById('final-best-label').textContent = t.finalBestLabel;
+                document.getElementById('new-record-badge').textContent = t.newRecord;
+                document.getElementById('restart-btn').textContent = t.playAgain;
+                document.getElementById('gameover-change-mode-btn').textContent = t.changeMode;
+
+                // ヘッダー＆ヒントバーの現在モード表記も更新
+                const curModeText = t.modes[this.currentMode];
+                this.headerModeLabel.textContent = curModeText.short;
+                this.modeHintText.textContent = curModeText.hintBar;
+                this.renderHoldSlot();
+            }
+
+            toggleLanguage() {
+                this.sound.init();
+                this.sound.playPickup();
+                this.lang = this.lang === 'ja' ? 'en' : 'ja';
+                localStorage.setItem('blockBlastLang', this.lang);
+                this.applyLanguage();
+            }
+
+            initTimePresetUI() {
+                const inputEl = document.getElementById('custom-time-input');
+                inputEl.value = this.customTimeLimit;
+                this.syncTimePresetButtons(this.customTimeLimit);
+            }
+
+            syncTimePresetButtons(seconds) {
+                document.querySelectorAll('.time-preset-btn').forEach(btn => {
+                    const val = parseInt(btn.getAttribute('data-time-preset'), 10);
+                    if (val === seconds) {
+                        btn.className = 'time-preset-btn px-2 py-0.5 rounded-lg text-[10px] font-black bg-cyan-500 text-slate-950 border border-cyan-300 transition';
+                    } else {
+                        btn.className = 'time-preset-btn px-2 py-0.5 rounded-lg text-[10px] font-black bg-slate-800/80 text-slate-300 border border-slate-600 transition';
+                    }
+                });
+            }
+
+            bindEvents() {
+                // 言語切替ボタン（ヘッダー＆モーダル）
+                document.getElementById('lang-btn').addEventListener('click', () => this.toggleLanguage());
+                document.getElementById('modal-lang-btn').addEventListener('click', () => this.toggleLanguage());
+
+                // 世界ランキングボタン
+                document.getElementById('leaderboard-btn').addEventListener('click', () => {
+                    this.sound.init();
+                    this.sound.playPickup();
+                    this.renderLeaderboardList();
+                    document.getElementById('leaderboard-modal').classList.remove('hidden');
+                });
+                document.getElementById('close-lb-modal-btn').addEventListener('click', () => {
+                    this.sound.playReturn();
+                    document.getElementById('leaderboard-modal').classList.add('hidden');
+                });
+
+                // オンライン対戦ロビー開閉・操作
+                const nameInput = document.getElementById('online-player-name');
+                nameInput.value = this.playerName;
+                nameInput.addEventListener('input', () => {
+                    this.playerName = nameInput.value.trim() || 'Player';
+                    localStorage.setItem('blockBlastPlayerName', this.playerName);
+                });
+
+                document.getElementById('open-online-lobby-btn').addEventListener('click', () => {
+                    this.sound.init();
+                    this.sound.playPickup();
+                    document.getElementById('online-status-msg').textContent = '';
+                    document.getElementById('online-lobby-modal').classList.remove('hidden');
+                });
+                document.getElementById('close-online-lobby-btn').addEventListener('click', () => {
+                    this.sound.playReturn();
+                    document.getElementById('online-lobby-modal').classList.add('hidden');
+                });
+                document.getElementById('create-room-btn').addEventListener('click', () => {
+                    this.sound.init();
+                    this.sound.playPickup();
+                    this.createOnlineRoom();
+                });
+                document.getElementById('join-room-btn').addEventListener('click', () => {
+                    this.sound.init();
+                    this.sound.playPickup();
+                    this.joinOnlineRoom();
+                });
+
+                // アチーブメントボタン（ヘッダー＆モーダル）
+                document.getElementById('achievement-btn').addEventListener('click', () => {
+                    this.sound.init();
+                    this.sound.playPickup();
+                    this.openAchievementsModal();
+                });
+                document.getElementById('modal-achievement-btn').addEventListener('click', () => {
+                    this.sound.init();
+                    this.sound.playPickup();
+                    this.openAchievementsModal();
+                });
+                document.getElementById('close-ach-modal-btn').addEventListener('click', () => {
+                    this.sound.playReturn();
+                    this.achievementsModal.classList.add('hidden');
+                });
+
+                // タイムアタック制限時間プリセット＆カスタム入力
+                const customTimeInput = document.getElementById('custom-time-input');
+                document.querySelectorAll('.time-preset-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.sound.init();
+                        this.sound.playPickup();
+                        const sec = parseInt(btn.getAttribute('data-time-preset'), 10);
+                        this.customTimeLimit = sec;
+                        customTimeInput.value = sec;
+                        localStorage.setItem('blockBlastCustomTime', String(sec));
+                        this.syncTimePresetButtons(sec);
+                    });
+                });
+                customTimeInput.addEventListener('change', () => {
+                    let val = parseInt(customTimeInput.value, 10);
+                    if (isNaN(val) || val < 10) val = 10;
+                    if (val > 600) val = 600;
+                    customTimeInput.value = val;
+                    this.customTimeLimit = val;
+                    localStorage.setItem('blockBlastCustomTime', String(val));
+                    this.syncTimePresetButtons(val);
+                });
+                customTimeInput.addEventListener('click', (e) => e.stopPropagation());
+
+                // サウンドミュート切替
+                const muteBtn = document.getElementById('mute-btn');
+                muteBtn.addEventListener('click', () => {
+                    this.sound.init();
+                    const isMuted = this.sound.toggleMute();
+                    document.getElementById('icon-sound-on').classList.toggle('hidden', isMuted);
+                    document.getElementById('icon-sound-off').classList.toggle('hidden', !isMuted);
+                });
+
+                // ヘッダーのモードバッジ押下でモード選択モーダルを開く
+                this.headerModeBtn.addEventListener('click', () => {
+                    this.sound.init();
+                    this.sound.playPickup();
+                    this.openModeSelectModal(true);
+                });
+
+                // モード選択ボタン群
+                document.querySelectorAll('[data-select-mode]').forEach(btn => {
+                    btn.addEventListener('click', () => {
+                        const modeId = btn.getAttribute('data-select-mode');
+                        this.sound.init();
+                        this.sound.playPickup();
+                        this.startNewGame(modeId);
+                    });
+                });
+
+                // モード選択モーダルの「現在のゲームに戻る」
+                this.closeModeModalBtn.addEventListener('click', () => {
+                    this.sound.playReturn();
+                    this.modeSelectModal.classList.add('hidden');
+                });
+
+                // リスタート＆モード変更ボタン
+                document.getElementById('restart-btn').addEventListener('click', () => {
+                    this.sound.init();
+                    this.startNewGame(this.currentMode);
+                });
+
+                document.getElementById('gameover-change-mode-btn').addEventListener('click', () => {
+                    this.sound.init();
+                    this.gameoverModal.classList.add('hidden');
+                    this.openModeSelectModal(false);
+                });
+
+                // ホールド枠のポインターイベント
+                this.holdSlotEl.addEventListener('mousedown', (e) => this.onDragStart(e, 'hold', false));
+                this.holdSlotEl.addEventListener('touchstart', (e) => this.onDragStart(e, 'hold', true), { passive: false });
+
+                // 各ピーススロットのポインター（マウス＆タッチ）イベント
+                this.slots.forEach((slotEl, index) => {
+                    slotEl.addEventListener('mousedown', (e) => this.onDragStart(e, index, false));
+                    slotEl.addEventListener('touchstart', (e) => this.onDragStart(e, index, true), { passive: false });
+                });
+
+                // グローバル移動・終了イベント
+                window.addEventListener('mousemove', (e) => this.onDragMove(e, false));
+                window.addEventListener('touchmove', (e) => this.onDragMove(e, true), { passive: false });
+                window.addEventListener('mouseup', (e) => this.onDragEnd(e));
+                window.addEventListener('touchend', (e) => this.onDragEnd(e));
+                window.addEventListener('touchcancel', (e) => this.onDragEnd(e));
+            }
+
+            /**
+             * アチーブメント解除チェック＆通知
+             */
+            unlockAchievement(achId) {
+                if (this.unlockedAchievements.has(achId)) return;
+                const ach = ACHIEVEMENTS.find(a => a.id === achId);
+                if (!ach) return;
+
+                this.unlockedAchievements.add(achId);
+                localStorage.setItem('blockBlastAchievements', JSON.stringify(Array.from(this.unlockedAchievements)));
+                this.updateAchievementBadgesUI();
+
+                // トースト通知表示
+                const t = I18N[this.lang];
+                const title = this.lang === 'ja' ? ach.titleJa : ach.titleEn;
+                const container = document.getElementById('achievement-toast-container');
+                const toast = document.createElement('div');
+                toast.className = 'achievement-toast mx-auto mb-2 px-3.5 py-2 rounded-2xl bg-gradient-to-r from-amber-500/95 to-yellow-500/95 text-slate-950 shadow-2xl border border-amber-200 flex items-center space-x-2.5';
+                toast.innerHTML = `
+                    <span class="text-xl">${ach.icon}</span>
+                    <div class="text-left">
+                        <div class="text-[10px] font-black tracking-wider opacity-85">${t.achUnlockedToast}</div>
+                        <div class="text-xs sm:text-sm font-black leading-tight">${title}</div>
+                    </div>
+                `;
+                container.appendChild(toast);
+                setTimeout(() => toast.remove(), 3300);
+            }
+
+            updateAchievementBadgesUI() {
+                const count = this.unlockedAchievements.size;
+                const total = ACHIEVEMENTS.length;
+                document.getElementById('achievement-count-badge').textContent = count;
+                document.getElementById('modal-ach-progress').textContent = `${count}/${total}`;
+                document.getElementById('ach-modal-subtitle').textContent = I18N[this.lang].achProgress(count, total);
+            }
+
+            openAchievementsModal() {
+                const listEl = document.getElementById('achievements-list');
+                listEl.innerHTML = '';
+                this.updateAchievementBadgesUI();
+
+                ACHIEVEMENTS.forEach(ach => {
+                    const unlocked = this.unlockedAchievements.has(ach.id);
+                    const title = this.lang === 'ja' ? ach.titleJa : ach.titleEn;
+                    const desc = this.lang === 'ja' ? ach.descJa : ach.descEn;
+
+                    const card = document.createElement('div');
+                    card.className = unlocked
+                        ? 'p-3 rounded-2xl bg-gradient-to-r from-amber-950/70 to-slate-800/90 border border-amber-400/50 flex items-center space-x-3'
+                        : 'p-3 rounded-2xl bg-slate-900/70 border border-slate-700/60 flex items-center space-x-3 opacity-60';
+
+                    card.innerHTML = `
+                        <div class="w-10 h-10 rounded-xl ${unlocked ? 'bg-amber-400/25 border-amber-300/60' : 'bg-slate-800 border-slate-700'} border flex items-center justify-center text-xl shrink-0">
+                            ${unlocked ? ach.icon : '🔒'}
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <div class="font-black text-xs sm:text-sm ${unlocked ? 'text-amber-300' : 'text-slate-300'} truncate">${title}</div>
+                            <div class="text-[10px] sm:text-[11px] text-slate-400 leading-snug">${desc}</div>
+                        </div>
+                        <div class="text-xs font-black ${unlocked ? 'text-emerald-400' : 'text-slate-600'} shrink-0">
+                            ${unlocked ? '✓' : '---'}
+                        </div>
+                    `;
+                    listEl.appendChild(card);
+                });
+
+                this.achievementsModal.classList.remove('hidden');
+            }
+
+            openModeSelectModal(canResume) {
+                this.updateModeBestUI();
+                if (canResume && this.hasStarted && !this.isGameOver) {
+                    this.closeModeModalBtn.classList.remove('hidden');
+                } else {
+                    this.closeModeModalBtn.classList.add('hidden');
+                }
+                this.modeSelectModal.classList.remove('hidden');
+            }
+
+            updateModeBestUI() {
+                document.getElementById('best-hint').textContent = this.highScores.hint;
+                document.getElementById('best-easy').textContent = this.highScores.easy;
+                document.getElementById('best-normal').textContent = this.highScores.normal;
+                document.getElementById('best-timeattack').textContent = this.highScores.timeattack;
+                document.getElementById('best-hard').textContent = this.highScores.hard;
+                document.getElementById('best-sousou').textContent = this.highScores.sousou;
+                document.getElementById('best-online').textContent = this.highScores.online;
+            }
+
+            applyModeTheme(modeId) {
+                const mode = GAME_MODES[modeId];
+                const tMode = I18N[this.lang].modes[modeId];
+                this.bodyEl.style.background = mode.bodyBg;
+                this.headerModeBtn.className = `px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-extrabold tracking-wider flex items-center space-x-1 border transition active:scale-95 ${mode.badgeClass}`;
+                this.headerModeLabel.textContent = tMode.short;
+                this.modeHintText.textContent = tMode.hintBar;
+                this.boardWrapperEl.className = `relative w-full aspect-square max-h-[47vh] sm:max-h-[50vh] bg-slate-800/90 p-2 sm:p-3 rounded-2xl border-2 ${mode.boardBorderClass} shadow-[0_10px_30px_rgba(0,0,0,0.6)] flex items-center justify-center transition-colors duration-300`;
+                this.timerBadgeEl.classList.toggle('hidden', !mode.isTimed);
+                document.getElementById('online-vs-bar').classList.toggle('hidden', modeId !== 'online');
+                if (modeId === 'online') {
+                    this.updateOnlineVsBarUI();
+                }
+            }
+
+            startNewGame(modeId = this.currentMode) {
+                const mode = GAME_MODES[modeId];
+                this.currentMode = modeId;
+                this.hasStarted = true;
+                this.isGameOver = false;
+                this.score = 0;
+                this.combo = 0;
+                this.allClearCount = 0;
+                this.holdPiece = null;
+                this.holdUsedThisTurn = false;
+                this.board = Array.from({ length: this.BOARD_SIZE }, () => Array(this.BOARD_SIZE).fill(null));
+                this.tray = [null, null, null];
+
+                this.clearHintTimer();
+                this.stopTimeAttackTimer();
+
+                this.applyModeTheme(modeId);
+                this.setupInitialBoardForMode(modeId);
+                this.updateScoreUI();
+                this.updateComboUI();
+                this.renderHoldSlot();
+
+                this.modeSelectModal.classList.add('hidden');
+                this.gameoverModal.classList.add('hidden');
+
+                this.spawnNewTray();
+                this.renderBoard(null);
+
+                if (mode && mode.isTimed) {
+                    this.startTimeAttackTimer();
+                }
+            }
+
+            startTimeAttackTimer() {
+                this.stopTimeAttackTimer();
+                this.timeRemaining = this.currentMode === 'online' ? 60 : this.customTimeLimit;
+                this.updateTimerDisplay();
+
+                this.timeAttackInterval = setInterval(() => {
+                    // モーダル表示中は一時停止（オンライン対戦中は止めない）
+                    if (this.currentMode !== 'online' && (!this.modeSelectModal.classList.contains('hidden') || !this.achievementsModal.classList.contains('hidden'))) {
+                        return;
+                    }
+                    if (this.isGameOver) {
+                        this.stopTimeAttackTimer();
+                        return;
+                    }
+
+                    this.timeRemaining = Math.max(0, this.timeRemaining - 0.1);
+                    this.updateTimerDisplay();
+
+                    if (this.timeRemaining <= 0) {
+                        this.stopTimeAttackTimer();
+                        this.triggerGameOver('timeup');
+                    }
+                }, 100);
+            }
+
+            stopTimeAttackTimer() {
+                if (this.timeAttackInterval) {
+                    clearInterval(this.timeAttackInterval);
+                    this.timeAttackInterval = null;
+                }
+            }
+
+            updateTimerDisplay() {
+                this.timerDisplayEl.textContent = `${this.timeRemaining.toFixed(1)}s`;
+                if (this.timeRemaining <= 10) {
+                    this.timerBadgeEl.classList.add('timer-danger', 'bg-rose-600/50', 'border-rose-300');
+                } else {
+                    this.timerBadgeEl.classList.remove('timer-danger', 'bg-rose-600/50', 'border-rose-300');
+                }
+            }
+
+            /**
+             * ヒント表示の10秒タイマーをリセットして再スタート
+             */
+            resetHintTimer() {
+                this.clearHintTimer();
+                this.hintVisible = false;
+                const mode = GAME_MODES[this.currentMode];
+                if (!mode || !mode.showHintGuide) return;
+
+                this.hintTimer = setTimeout(() => {
+                    this.hintVisible = true;
+                    if (!this.dragState.active) {
+                        this.renderBoard(null);
+                    }
+                }, 10000);
+            }
+
+            clearHintTimer() {
+                if (this.hintTimer) {
+                    clearTimeout(this.hintTimer);
+                    this.hintTimer = null;
+                }
+                this.hintVisible = false;
+            }
+
+            setupInitialBoardForMode(modeId) {
+                if (modeId === 'hard') {
+                    let placed = 0;
+                    while (placed < 14) {
+                        const r = Math.floor(Math.random() * this.BOARD_SIZE);
+                        const c = Math.floor(Math.random() * this.BOARD_SIZE);
+                        if (!this.board[r][c]) {
+                            const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
+                            this.board[r][c] = { color, isBomb: false };
+                            placed++;
+                        }
+                    }
+                } else if (modeId === 'sousou') {
+                    const targetRows = [2, 5];
+                    const targetCols = [3, 6];
+                    targetRows.forEach(r => {
+                        const gap1 = Math.floor(Math.random() * 4);
+                        const gap2 = 4 + Math.floor(Math.random() * 4);
+                        for (let c = 0; c < this.BOARD_SIZE; c++) {
+                            if (c !== gap1 && c !== gap2) {
+                                const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
+                                this.board[r][c] = { color, isBomb: false };
+                            }
+                        }
+                    });
+                    targetCols.forEach(c => {
+                        const gap = Math.floor(Math.random() * this.BOARD_SIZE);
+                        for (let r = 0; r < this.BOARD_SIZE; r++) {
+                            if (r !== gap && !this.board[r][c]) {
+                                const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
+                                this.board[r][c] = { color, isBomb: false };
+                            }
+                        }
+                    });
+                }
+            }
+
+            pickWeightedShape() {
+                const modeId = this.currentMode;
+                let totalWeight = 0;
+                for (const item of PIECE_SHAPES) {
+                    totalWeight += item.weights[modeId] || 5;
+                }
+                let rand = Math.random() * totalWeight;
+                for (const item of PIECE_SHAPES) {
+                    const w = item.weights[modeId] || 5;
+                    if (rand < w) {
+                        return item.matrix.map(row => [...row]);
+                    }
+                    rand -= w;
+                }
+                return PIECE_SHAPES[0].matrix.map(row => [...row]);
+            }
+
+            spawnNewTray() {
+                const mode = GAME_MODES[this.currentMode];
+                for (let i = 0; i < 3; i++) {
+                    const matrix = this.pickWeightedShape();
+                    const color = BLOCK_COLORS[Math.floor(Math.random() * BLOCK_COLORS.length)];
+                    const isBomb = mode.bombChance > 0 && Math.random() < mode.bombChance;
+                    this.tray[i] = { matrix, color, isBomb };
+                }
+                this.computeBestHintMove();
+                this.resetHintTimer();
+                this.renderTray();
+            }
+
+            rotateMatrix90(matrix) {
+                const rows = matrix.length;
+                const cols = matrix[0].length;
+                const rotated = Array.from({ length: cols }, () => Array(rows).fill(0));
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        rotated[c][rows - 1 - r] = matrix[r][c];
+                    }
+                }
+                return rotated;
+            }
+
+            /**
+             * ヒントありモード用：手持ちピースの最もラインが消える（または盤面を整える）配置を探索
+             */
+            computeBestHintMove() {
+                this.bestHintCells = [];
+                const mode = GAME_MODES[this.currentMode];
+                if (!mode.showHintGuide) return;
+
+                let bestScore = -Infinity;
+                let bestPlacement = null;
+
+                // 手持ちトレイ＋ホールド枠も候補に含めて探索
+                const candidates = [...this.tray];
+                if (this.holdPiece) candidates.push(this.holdPiece);
+
+                for (let i = 0; i < candidates.length; i++) {
+                    const piece = candidates[i];
+                    if (!piece) continue;
+
+                    // 回転ありモードなので最大4回転分まで最適配置を探索
+                    let testMatrix = piece.matrix.map(r => [...r]);
+                    for (let rot = 0; rot < 4; rot++) {
+                        for (let r = 0; r < this.BOARD_SIZE; r++) {
+                            for (let c = 0; c < this.BOARD_SIZE; c++) {
+                                if (this.canPlacePiece(testMatrix, r, c)) {
+                                    const sim = this.simulateClears(testMatrix, r, c, piece.isBomb);
+                                    const linesCleared = sim.rowsToClear.length + sim.colsToClear.length;
+
+                                    // 評価値：消去ライン数を最優先し、次に周囲の既存ブロックや壁との隣接度で採点
+                                    let evalScore = linesCleared * 1000;
+                                    for (let pr = 0; pr < testMatrix.length; pr++) {
+                                        for (let pc = 0; pc < testMatrix[0].length; pc++) {
+                                            if (testMatrix[pr][pc]) {
+                                                const br = r + pr;
+                                                const bc = c + pc;
+                                                const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+                                                for (const [dr, dc] of dirs) {
+                                                    const nr = br + dr;
+                                                    const nc = bc + dc;
+                                                    if (nr < 0 || nr >= this.BOARD_SIZE || nc < 0 || nc >= this.BOARD_SIZE) {
+                                                        evalScore += 3; // 端に寄せる評価
+                                                    } else if (this.board[nr][nc]) {
+                                                        evalScore += 5; // 既存ブロックに隣接する評価
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (evalScore > bestScore) {
+                                        bestScore = evalScore;
+                                        bestPlacement = { matrix: testMatrix.map(row => [...row]), row: r, col: c };
+                                    }
+                                }
+                            }
+                        }
+                        testMatrix = this.rotateMatrix90(testMatrix);
+                    }
+                }
+
+                if (bestPlacement) {
+                    const { matrix, row, col } = bestPlacement;
+                    for (let pr = 0; pr < matrix.length; pr++) {
+                        for (let pc = 0; pc < matrix[0].length; pc++) {
+                            if (matrix[pr][pc]) {
+                                this.bestHintCells.push({ r: row + pr, c: col + pc });
+                            }
+                        }
+                    }
+                }
+            }
+
+            renderPieceMiniGrid(containerEl, piece, scaleRatio = 0.72) {
+                const mode = GAME_MODES[this.currentMode];
+                const rows = piece.matrix.length;
+                const cols = piece.matrix[0].length;
+                const maxDim = Math.max(rows, cols, 3);
+                const cellPx = Math.max(10, Math.floor((containerEl.clientHeight * scaleRatio) / maxDim));
+
+                const wrapper = document.createElement('div');
+                wrapper.className = 'relative flex items-center justify-center';
+
+                const grid = document.createElement('div');
+                grid.style.display = 'grid';
+                grid.style.gridTemplateColumns = `repeat(${cols}, ${cellPx}px)`;
+                grid.style.gridTemplateRows = `repeat(${rows}, ${cellPx}px)`;
+                grid.style.gap = '2px';
+
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const cell = document.createElement('div');
+                        if (piece.matrix[r][c]) {
+                            cell.className = `block-jewel ${piece.color.bg} flex items-center justify-center text-[10px]`;
+                            if (piece.isBomb) {
+                                cell.textContent = '💣';
+                            }
+                        }
+                        grid.appendChild(cell);
+                    }
+                }
+                wrapper.appendChild(grid);
+
+                if (mode.allowRotate) {
+                    const rotBadge = document.createElement('div');
+                    rotBadge.className = `absolute -top-1.5 -right-2 w-4 h-4 rounded-full ${mode.id === 'hint' ? 'bg-sky-500/90 border-sky-200' : 'bg-emerald-500/90 border-emerald-200'} text-slate-950 font-black text-[10px] flex items-center justify-center shadow-md border pointer-events-none`;
+                    rotBadge.textContent = '↻';
+                    wrapper.appendChild(rotBadge);
+                }
+
+                containerEl.appendChild(wrapper);
+            }
+
+            renderHoldSlot() {
+                const t = I18N[this.lang];
+                this.holdSlotEl.innerHTML = '';
+
+                if (this.holdUsedThisTurn) {
+                    this.holdBoxEl.classList.add('opacity-60');
+                } else {
+                    this.holdBoxEl.classList.remove('opacity-60');
+                }
+
+                if (!this.holdPiece) {
+                    const hintSpan = document.createElement('span');
+                    hintSpan.className = 'text-[9px] sm:text-[10px] font-bold text-indigo-300/65 text-center px-1 leading-tight whitespace-pre-line pointer-events-none';
+                    hintSpan.textContent = t.holdEmpty;
+                    this.holdSlotEl.appendChild(hintSpan);
+                } else {
+                    this.renderPieceMiniGrid(this.holdSlotEl, this.holdPiece, 0.62);
+                }
+            }
+
+            renderTray() {
+                this.slots.forEach((slotEl, index) => {
+                    slotEl.innerHTML = '';
+                    const piece = this.tray[index];
+                    if (!piece) return;
+                    this.renderPieceMiniGrid(slotEl, piece, 0.72);
+                });
+            }
+
+            renderBoard(ghostInfo = null) {
+                const mode = GAME_MODES[this.currentMode];
+                for (let r = 0; r < this.BOARD_SIZE; r++) {
+                    for (let c = 0; c < this.BOARD_SIZE; c++) {
+                        const cellEl = this.cellElements[r][c];
+                        const blockData = this.board[r][c];
+
+                        cellEl.className = 'board-cell w-full h-full flex items-center justify-center text-sm sm:text-base';
+                        cellEl.textContent = '';
+
+                        if (blockData) {
+                            cellEl.classList.add('block-jewel', ...blockData.color.bg.split(' '));
+                            if (blockData.isBomb) {
+                                cellEl.textContent = '💣';
+                            }
+                        } else if (mode.showHintGuide && this.hintVisible && !ghostInfo) {
+                            // 10秒経過後かつドラッグ中でないとき、ヒントありモードの推奨配置ガイドを点滅表示
+                            const isHintCell = this.bestHintCells.some(hc => hc.r === r && hc.c === c);
+                            if (isHintCell) {
+                                cellEl.classList.add('hint-guide-cell');
+                            }
+                        }
+                    }
+                }
+
+                if (ghostInfo && ghostInfo.canDrop) {
+                    const { matrix, color, isBomb, targetRow, targetCol } = ghostInfo;
+                    const sim = this.simulateClears(matrix, targetRow, targetCol, isBomb);
+
+                    for (let r = 0; r < matrix.length; r++) {
+                        for (let c = 0; c < matrix[0].length; c++) {
+                            if (matrix[r][c]) {
+                                const br = targetRow + r;
+                                const bc = targetCol + c;
+                                const cellEl = this.cellElements[br][bc];
+                                cellEl.classList.add('block-jewel', 'ghost-cell', ...color.bg.split(' '));
+                                if (isBomb) cellEl.textContent = '💣';
+                            }
+                        }
+                    }
+
+                    sim.rowsToClear.forEach(r => {
+                        for (let c = 0; c < this.BOARD_SIZE; c++) {
+                            this.cellElements[r][c].classList.add('highlight-clear');
+                        }
+                    });
+                    sim.colsToClear.forEach(c => {
+                        for (let r = 0; r < this.BOARD_SIZE; r++) {
+                            this.cellElements[r][c].classList.add('highlight-clear');
+                        }
+                    });
+                    sim.bombCells.forEach(({ r, c }) => {
+                        this.cellElements[r][c].classList.add('highlight-bomb');
+                    });
+                }
+            }
+
+            onDragStart(e, slotIndex, isTouch) {
+                if (e.cancelable) e.preventDefault();
+                if (this.isGameOver) return;
+                this.sound.init();
+
+                // ホールド枠からのドラッグ時、すでにこのターン使っていたらロック
+                if (slotIndex === 'hold' && this.holdUsedThisTurn) {
+                    this.sound.playReturn();
+                    return;
+                }
+
+                const piece = slotIndex === 'hold' ? this.holdPiece : this.tray[slotIndex];
+                if (!piece) return;
+
+                const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+                const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+
+                const firstCellRect = this.cellElements[0][0].getBoundingClientRect();
+                const cellSize = firstCellRect.width;
+
+                this.dragState = {
+                    active: true,
+                    slotIndex,
+                    piece,
+                    isTouch,
+                    startX: clientX,
+                    startY: clientY,
+                    hasMoved: false,
+                    cellSize,
+                    targetRow: -1,
+                    targetCol: -1,
+                    canDrop: false,
+                    overHold: false
+                };
+
+                this.sound.playPickup();
+                if (slotIndex === 'hold') {
+                    this.holdSlotEl.style.opacity = '0.25';
+                } else {
+                    this.slots[slotIndex].style.opacity = '0.25';
+                }
+
+                this.buildDragLayer(piece, cellSize);
+                this.updateDragPosition(clientX, clientY);
+            }
+
+            buildDragLayer(piece, cellSize) {
+                const rows = piece.matrix.length;
+                const cols = piece.matrix[0].length;
+                const gap = window.innerWidth >= 640 ? 6 : 4;
+
+                this.dragLayer.innerHTML = '';
+                this.dragLayer.style.display = 'grid';
+                this.dragLayer.style.gridTemplateColumns = `repeat(${cols}, ${cellSize}px)`;
+                this.dragLayer.style.gridTemplateRows = `repeat(${rows}, ${cellSize}px)`;
+                this.dragLayer.style.gap = `${gap}px`;
+                this.dragLayer.classList.remove('hidden');
+
+                for (let r = 0; r < rows; r++) {
+                    for (let c = 0; c < cols; c++) {
+                        const cell = document.createElement('div');
+                        if (piece.matrix[r][c]) {
+                            cell.className = `block-jewel ${piece.color.bg} shadow-2xl flex items-center justify-center text-sm sm:text-base`;
+                            if (piece.isBomb) cell.textContent = '💣';
+                        }
+                        this.dragLayer.appendChild(cell);
+                    }
+                }
+            }
+
+            onDragMove(e, isTouch) {
+                if (!this.dragState.active) return;
+                if (e.cancelable) e.preventDefault();
+
+                const clientX = isTouch ? e.touches[0].clientX : e.clientX;
+                const clientY = isTouch ? e.touches[0].clientY : e.clientY;
+
+                const dist = Math.hypot(clientX - this.dragState.startX, clientY - this.dragState.startY);
+                if (dist > 10) {
+                    this.dragState.hasMoved = true;
+                }
+
+                this.updateDragPosition(clientX, clientY);
+            }
+
+            updateDragPosition(clientX, clientY) {
+                const { piece, isTouch, cellSize, slotIndex } = this.dragState;
+                const rows = piece.matrix.length;
+                const cols = piece.matrix[0].length;
+                const gap = window.innerWidth >= 640 ? 6 : 4;
+
+                const pieceWidth = cols * cellSize + (cols - 1) * gap;
+                const pieceHeight = rows * cellSize + (rows - 1) * gap;
+
+                const touchOffsetY = isTouch ? (pieceHeight * 0.55 + 48) : 0;
+                const left = clientX - pieceWidth / 2;
+                const top = clientY - pieceHeight / 2 - touchOffsetY;
+
+                this.dragLayer.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+
+                // ホールド枠の上にドラッグされているか判定（トレイからのドラッグ時のみ）
+                const holdRect = this.holdBoxEl.getBoundingClientRect();
+                const isOverHold = (slotIndex !== 'hold' && !this.holdUsedThisTurn) &&
+                    clientX >= holdRect.left - 8 && clientX <= holdRect.right + 8 &&
+                    clientY >= holdRect.top - 8 && clientY <= holdRect.bottom + 8;
+
+                this.dragState.overHold = isOverHold;
+                if (isOverHold) {
+                    this.holdBoxEl.classList.add('border-indigo-300', 'bg-indigo-800/70', 'scale-105');
+                    this.dragState.canDrop = false;
+                    this.renderBoard(null);
+                    return;
+                } else {
+                    this.holdBoxEl.classList.remove('border-indigo-300', 'bg-indigo-800/70', 'scale-105');
+                }
+
+                const boardRect = this.boardEl.getBoundingClientRect();
+                const step = cellSize + gap;
+                const relX = left - boardRect.left;
+                const relY = top - boardRect.top;
+
+                const targetCol = Math.round(relX / step);
+                const targetRow = Math.round(relY / step);
+
+                const canDrop = this.canPlacePiece(piece.matrix, targetRow, targetCol);
+                this.dragState.targetRow = targetRow;
+                this.dragState.targetCol = targetCol;
+                this.dragState.canDrop = canDrop;
+
+                if (canDrop) {
+                    this.renderBoard({
+                        matrix: piece.matrix,
+                        color: piece.color,
+                        isBomb: piece.isBomb,
+                        targetRow,
+                        targetCol,
+                        canDrop: true
+                    });
+                } else {
+                    this.renderBoard(null);
+                }
+            }
+
+            onDragEnd() {
+                if (!this.dragState.active) return;
+
+                const { slotIndex, piece, targetRow, targetCol, canDrop, hasMoved, overHold } = this.dragState;
+                this.dragState.active = false;
+
+                this.dragLayer.classList.add('hidden');
+                this.dragLayer.innerHTML = '';
+                this.holdBoxEl.classList.remove('border-indigo-300', 'bg-indigo-800/70', 'scale-105');
+
+                if (slotIndex === 'hold') {
+                    this.holdSlotEl.style.opacity = '1';
+                } else {
+                    this.slots[slotIndex].style.opacity = '1';
+                }
+
+                const mode = GAME_MODES[this.currentMode];
+
+                // タップ（移動なし）時の回転処理
+                if (!hasMoved && mode.allowRotate) {
+                    piece.matrix = this.rotateMatrix90(piece.matrix);
+                    this.sound.playRotate();
+                    this.computeBestHintMove();
+                    this.resetHintTimer();
+                    this.renderTray();
+                    this.renderHoldSlot();
+                    this.renderBoard(null);
+                    this.checkGameOver();
+                    return;
+                }
+
+                // ホールド枠へのドロップ（預ける／入れ替える）
+                if (overHold && slotIndex !== 'hold' && !this.holdUsedThisTurn) {
+                    const prevHold = this.holdPiece;
+                    this.holdPiece = piece;
+                    this.tray[slotIndex] = prevHold;
+                    this.holdUsedThisTurn = true;
+                    this.sound.playRotate();
+                    this.unlockAchievement('use_hold');
+
+                    if (this.tray.every(p => p === null)) {
+                        this.spawnNewTray();
+                    } else {
+                        this.renderTray();
+                    }
+                    this.renderHoldSlot();
+                    this.computeBestHintMove();
+                    this.resetHintTimer();
+                    this.checkGameOver();
+                    return;
+                }
+
+                if (canDrop) {
+                    this.clearHintTimer();
+                    this.placePiece(slotIndex, piece, targetRow, targetCol);
+                } else {
+                    this.sound.playReturn();
+                    this.renderBoard(null);
+                }
+            }
+
+            canPlacePiece(matrix, startRow, startCol) {
+                for (let r = 0; r < matrix.length; r++) {
+                    for (let c = 0; c < matrix[0].length; c++) {
+                        if (matrix[r][c]) {
+                            const br = startRow + r;
+                            const bc = startCol + c;
+                            if (br < 0 || br >= this.BOARD_SIZE || bc < 0 || bc >= this.BOARD_SIZE) {
+                                return false;
+                            }
+                            if (this.board[br][bc] !== null) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                return true;
+            }
+
+            simulateClears(matrix, startRow, startCol, isBomb = false) {
+                const tempBoard = this.board.map(row => [...row]);
+                const placedCoords = [];
+                for (let r = 0; r < matrix.length; r++) {
+                    for (let c = 0; c < matrix[0].length; c++) {
+                        if (matrix[r][c]) {
+                            tempBoard[startRow + r][startCol + c] = { color: 'temp', isBomb };
+                            placedCoords.push({ r: startRow + r, c: startCol + c });
+                        }
+                    }
+                }
+
+                const rowsToClear = [];
+                const colsToClear = [];
+
+                for (let r = 0; r < this.BOARD_SIZE; r++) {
+                    if (tempBoard[r].every(cell => cell !== null)) {
+                        rowsToClear.push(r);
+                    }
+                }
+                for (let c = 0; c < this.BOARD_SIZE; c++) {
+                    let full = true;
+                    for (let r = 0; r < this.BOARD_SIZE; r++) {
+                        if (tempBoard[r][c] === null) {
+                            full = false;
+                            break;
+                        }
+                    }
+                    if (full) colsToClear.push(c);
+                }
+
+                const bombSet = new Set();
+                if (isBomb) {
+                    placedCoords.forEach(({ r, c }) => {
+                        for (let dr = -1; dr <= 1; dr++) {
+                            for (let dc = -1; dc <= 1; dc++) {
+                                const nr = r + dr;
+                                const nc = c + dc;
+                                if (nr >= 0 && nr < this.BOARD_SIZE && nc >= 0 && nc < this.BOARD_SIZE) {
+                                    bombSet.add(`${nr},${nc}`);
+                                }
+                            }
+                        }
+                    });
+                }
+                const bombCells = Array.from(bombSet).map(key => {
+                    const [r, c] = key.split(',').map(Number);
+                    return { r, c };
+                });
+
+                return { rowsToClear, colsToClear, bombCells };
+            }
+
+            placePiece(slotIndex, piece, startRow, startCol) {
+                const mode = GAME_MODES[this.currentMode];
+                let placedBlocksCount = 0;
+
+                for (let r = 0; r < piece.matrix.length; r++) {
+                    for (let c = 0; c < piece.matrix[0].length; c++) {
+                        if (piece.matrix[r][c]) {
+                            const br = startRow + r;
+                            const bc = startCol + c;
+                            this.board[br][bc] = { color: piece.color, isBomb: piece.isBomb };
+                            placedBlocksCount++;
+                        }
+                    }
+                }
+
+                if (slotIndex === 'hold') {
+                    this.holdPiece = null;
+                } else {
+                    this.tray[slotIndex] = null;
+                }
+                // 1ピース配置したのでホールドのロックを解除
+                this.holdUsedThisTurn = false;
+                this.renderTray();
+                this.renderHoldSlot();
+                this.renderBoard(null);
+
+                for (let r = 0; r < piece.matrix.length; r++) {
+                    for (let c = 0; c < piece.matrix[0].length; c++) {
+                        if (piece.matrix[r][c]) {
+                            const cellEl = this.cellElements[startRow + r][startCol + c];
+                            cellEl.classList.add('anim-place');
+                            setTimeout(() => cellEl.classList.remove('anim-place'), 220);
+                        }
+                    }
+                }
+
+                const sim = this.simulateClears(piece.matrix, startRow, startCol, piece.isBomb);
+                const totalLines = sim.rowsToClear.length + sim.colsToClear.length;
+                const hasBombBlast = piece.isBomb && sim.bombCells.length > 0;
+
+                if (totalLines > 0 || hasBombBlast) {
+                    this.combo++;
+                    const baseLinePoints = totalLines * 100 * totalLines;
+                    const bombPoints = hasBombBlast ? sim.bombCells.length * 25 : 0;
+                    const comboBonus = (this.combo > 1) ? (this.combo - 1) * 50 : 0;
+                    const earnedPoints = Math.round((placedBlocksCount * 10 + baseLinePoints + bombPoints + comboBonus) * mode.scoreMultiplier);
+
+                    // アチーブメント判定（消去・コンボ・同時消し）
+                    if (totalLines >= 1) this.unlockAchievement('first_clear');
+                    if (this.combo >= 3) this.unlockAchievement('combo_3');
+                    if (totalLines >= 3) this.unlockAchievement('multi_3');
+
+                    // タイムアタックモードならライン消去で残り時間ボーナス加算（+2秒 × 消去ライン数）
+                    if (mode.isTimed && totalLines > 0) {
+                        const bonusSec = totalLines * 2;
+                        this.timeRemaining += bonusSec;
+                        this.updateTimerDisplay();
+                        const rect = this.boardEl.getBoundingClientRect();
+                        this.spawnPopup(rect.width / 2, 30, `+${bonusSec}s!`, 'text-lg sm:text-xl text-cyan-300');
+                    }
+
+                    this.addScore(earnedPoints);
+                    if (hasBombBlast) {
+                        this.sound.playExplosion();
+                    } else {
+                        this.sound.playClear(Math.max(1, totalLines), this.combo);
+                    }
+                    this.executeClearAnimation(sim, earnedPoints, totalLines, this.combo, hasBombBlast);
+                } else {
+                    this.sound.playPlace();
+                    this.combo = 0;
+                    this.addScore(Math.round(placedBlocksCount * 10 * mode.scoreMultiplier));
+                    this.afterTurnProgression();
+                }
+
+                this.updateComboUI();
+            }
+
+            executeClearAnimation(sim, earnedPoints, totalLines, combo, hasBombBlast) {
+                const cellsToClear = new Set();
+                sim.rowsToClear.forEach(r => {
+                    for (let c = 0; c < this.BOARD_SIZE; c++) cellsToClear.add(`${r},${c}`);
+                });
+                sim.colsToClear.forEach(c => {
+                    for (let r = 0; r < this.BOARD_SIZE; r++) cellsToClear.add(`${r},${c}`);
+                });
+                sim.bombCells.forEach(({ r, c }) => {
+                    cellsToClear.add(`${r},${c}`);
+                });
+
+                const boardRect = this.boardEl.getBoundingClientRect();
+                const particleCount = (this.currentMode === 'sousou' || hasBombBlast) ? 14 : 7;
+
+                if (this.currentMode === 'sousou' || hasBombBlast || totalLines >= 2) {
+                    this.boardWrapperEl.classList.remove('anim-shake');
+                    void this.boardWrapperEl.offsetWidth;
+                    this.boardWrapperEl.classList.add('anim-shake');
+                }
+
+                let sumX = 0, sumY = 0, count = 0;
+
+                cellsToClear.forEach(key => {
+                    const [r, c] = key.split(',').map(Number);
+                    const cellEl = this.cellElements[r][c];
+                    const blockData = this.board[r][c];
+                    const hexColor = blockData ? blockData.color.hex : '#fb923c';
+
+                    cellEl.classList.add('anim-clear');
+
+                    const cellRect = cellEl.getBoundingClientRect();
+                    const cx = cellRect.left - boardRect.left + cellRect.width / 2;
+                    const cy = cellRect.top - boardRect.top + cellRect.height / 2;
+                    this.particles.spawn(cx, cy, hexColor, particleCount);
+
+                    sumX += cx;
+                    sumY += cy;
+                    count++;
+                });
+
+                if (count > 0) {
+                    const centerX = sumX / count;
+                    const centerY = sumY / count;
+                    this.spawnPopup(centerX, centerY, `+${earnedPoints}`, 'text-2xl sm:text-3xl text-amber-300');
+
+                    const t = I18N[this.lang];
+                    if (hasBombBlast) {
+                        this.spawnPopup(centerX, centerY - 34, t.bombBlast, 'text-lg sm:text-xl text-orange-300');
+                    } else if (totalLines >= 2) {
+                        this.spawnPopup(centerX, centerY - 34, t.linesCleared(totalLines), 'text-lg sm:text-xl text-cyan-300');
+                    }
+                    if (combo >= 2) {
+                        this.spawnPopup(centerX, centerY + 28, `COMBO x${combo}!`, 'text-base sm:text-lg text-fuchsia-300');
+                    }
+                }
+
+                setTimeout(() => {
+                    cellsToClear.forEach(key => {
+                        const [r, c] = key.split(',').map(Number);
+                        this.board[r][c] = null;
+                    });
+
+                    // ボード上のブロックが0個（全消し達成）か判定
+                    const isAllClear = this.board.every(row => row.every(cell => cell === null));
+                    if (isAllClear) {
+                        this.triggerAllClear();
+                    }
+
+                    this.renderBoard(null);
+                    this.afterTurnProgression();
+                }, 320);
+            }
+
+            /**
+             * 全消し（ALL CLEAR）達成時の演出・背景チェンジ・ボーナス加算
+             */
+            triggerAllClear() {
+                const mode = GAME_MODES[this.currentMode];
+                const bgIndex = this.allClearCount % ALL_CLEAR_BACKGROUNDS.length;
+                this.allClearCount++;
+                this.unlockAchievement('all_clear');
+
+                // 背景をスペシャルグラデーションへ変更
+                this.bodyEl.style.background = ALL_CLEAR_BACKGROUNDS[bgIndex];
+
+                // 全消しボーナス加算
+                const allClearBonus = Math.round(500 * mode.scoreMultiplier);
+                this.addScore(allClearBonus);
+
+                // ボード中央に豪華ポップアップ＆花火パーティクルを発生
+                const rect = this.boardEl.getBoundingClientRect();
+                const cx = rect.width / 2;
+                const cy = rect.height / 2;
+                const t = I18N[this.lang];
+
+                this.spawnPopup(cx, cy - 20, t.allClear, 'text-2xl sm:text-3xl text-yellow-300');
+                this.spawnPopup(cx, cy + 18, `ALL CLEAR +${allClearBonus}`, 'text-lg sm:text-xl text-cyan-200');
+
+                BLOCK_COLORS.forEach((col, idx) => {
+                    setTimeout(() => {
+                        const px = cx + (Math.random() - 0.5) * (rect.width * 0.65);
+                        const py = cy + (Math.random() - 0.5) * (rect.height * 0.65);
+                        this.particles.spawn(px, py, col.hex, 16);
+                    }, idx * 55);
+                });
+            }
+
+            afterTurnProgression() {
+                if (this.tray.every(p => p === null)) {
+                    this.spawnNewTray();
+                } else {
+                    this.computeBestHintMove();
+                    this.resetHintTimer();
+                    this.renderBoard(null);
+                }
+                this.checkGameOver();
+            }
+
+            spawnPopup(x, y, text, colorClass) {
+                const el = document.createElement('div');
+                el.className = `popup-text ${colorClass}`;
+                el.style.left = `${x}px`;
+                el.style.top = `${y}px`;
+                el.textContent = text;
+                this.popupLayer.appendChild(el);
+                setTimeout(() => el.remove(), 1100);
+            }
+
+            addScore(points) {
+                this.score += points;
+                if (this.score >= 2000) this.unlockAchievement('score_2000');
+                if (this.score >= 5000) this.unlockAchievement('score_5000');
+                if (this.currentMode === 'timeattack' && this.score >= 1500) {
+                    this.unlockAchievement('time_survivor');
+                }
+
+                if (this.score > this.highScores[this.currentMode]) {
+                    this.highScores[this.currentMode] = this.score;
+                    localStorage.setItem(`blockBlastBest_${this.currentMode}`, String(this.score));
+                    this.updateModeBestUI();
+                    this.submitOnlineLeaderboardScore(this.score);
+                }
+                if (this.currentMode === 'online') {
+                    this.updateOnlineVsBarUI();
+                    this.syncMyScoreToRoom();
+                }
+                this.updateScoreUI();
+            }
+
+            updateScoreUI() {
+                this.scoreEl.textContent = this.score;
+                this.highScoreEl.textContent = this.highScores[this.currentMode];
+            }
+
+            updateComboUI() {
+                if (this.combo >= 2) {
+                    this.comboBadgeEl.textContent = `COMBO x${this.combo}`;
+                    this.comboBadgeEl.classList.remove('opacity-0');
+                } else {
+                    this.comboBadgeEl.classList.add('opacity-0');
+                }
+            }
+
+            checkGameOver() {
+                if (this.isGameOver) return;
+                const mode = GAME_MODES[this.currentMode];
+                const candidatePieces = this.tray.filter(p => p !== null);
+                if (this.holdPiece) candidatePieces.push(this.holdPiece);
+                if (candidatePieces.length === 0) return;
+
+                let canAnyMove = false;
+                for (const piece of candidatePieces) {
+                    let testMatrix = piece.matrix.map(r => [...r]);
+                    const rotationsToTry = mode.allowRotate ? 4 : 1;
+
+                    for (let rot = 0; rot < rotationsToTry; rot++) {
+                        for (let r = 0; r < this.BOARD_SIZE; r++) {
+                            for (let c = 0; c < this.BOARD_SIZE; c++) {
+                                if (this.canPlacePiece(testMatrix, r, c)) {
+                                    canAnyMove = true;
+                                    break;
+                                }
+                            }
+                            if (canAnyMove) break;
+                        }
+                        if (canAnyMove) break;
+                        testMatrix = this.rotateMatrix90(testMatrix);
+                    }
+                    if (canAnyMove) break;
+                }
+
+                if (!canAnyMove) {
+                    this.triggerGameOver('nomoves');
+                }
+            }
+
+            triggerGameOver(reason = 'nomoves') {
+                if (this.isGameOver) return;
+                this.isGameOver = true;
+                this.stopTimeAttackTimer();
+                this.clearHintTimer();
+
+                setTimeout(() => {
+                    this.sound.playGameOver();
+                    const t = I18N[this.lang];
+                    const tMode = t.modes[this.currentMode];
+                    const reasonText = reason === 'timeup' ? t.timeUp : t.noMoreMoves;
+                    document.getElementById('gameover-mode-tag').textContent = `${tMode.full} - ${reasonText}`;
+                    document.getElementById('final-score').textContent = this.score;
+                    document.getElementById('final-high-score').textContent = this.highScores[this.currentMode];
+
+                    // オンライン対戦時の勝敗表示
+                    const onlineResultBox = document.getElementById('online-result-box');
+                    if (this.currentMode === 'online') {
+                        onlineResultBox.classList.remove('hidden');
+                        document.getElementById('online-rival-result-name').textContent = this.rivalName;
+                        document.getElementById('online-rival-result-score').textContent = `${this.rivalScore} pts`;
+                        const banner = document.getElementById('online-winner-banner');
+                        if (this.score > this.rivalScore) {
+                            banner.textContent = t.youWin;
+                            banner.className = 'text-base sm:text-lg font-black text-amber-300';
+                        } else if (this.score < this.rivalScore) {
+                            banner.textContent = t.youLose;
+                            banner.className = 'text-base sm:text-lg font-black text-rose-400';
+                        } else {
+                            banner.textContent = t.drawMatch;
+                            banner.className = 'text-base sm:text-lg font-black text-cyan-300';
+                        }
+                    } else {
+                        onlineResultBox.classList.add('hidden');
+                    }
+
+                    const isNewRecord = this.score > 0 && this.score >= this.highScores[this.currentMode];
+                    document.getElementById('new-record-badge').classList.toggle('hidden', !isNewRecord);
+                    this.gameoverModal.classList.remove('hidden');
+                }, 350);
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            new BlockBlastGame();
+        });
+    </script>
+</body>
+</html>
